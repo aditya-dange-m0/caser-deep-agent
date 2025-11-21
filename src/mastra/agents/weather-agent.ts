@@ -1,5 +1,6 @@
 import { Agent } from "@mastra/core/agent";
 import { weatherTool } from "../tools/weather-tool";
+import { memory } from "../memory";
 
 export const weatherAgent = new Agent({
   name: "Weather Agent",
@@ -17,4 +18,5 @@ export const weatherAgent = new Agent({
 `,
   model: "google/gemini-2.0-flash",
   tools: { weatherTool },
+  memory,
 });
