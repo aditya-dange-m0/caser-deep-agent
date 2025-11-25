@@ -22,9 +22,11 @@
     "mastra-build": "mastra build"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.72",
     "@mastra/core": "^0.24.5",
     "@mastra/fastembed": "^0.10.7",
     "@mastra/libsql": "^0.16.2",
+    "@mastra/loggers": "^0.10.19",
     "@mastra/memory": "^0.15.11",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
