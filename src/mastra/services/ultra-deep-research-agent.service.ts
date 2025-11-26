@@ -1,11 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ultraDeepResearchTool } from '../tools/deep-research-tools';
 import { ProcessorType } from '../ultra-deep-research-agent.controller';
-import { mastra } from '../index';
-import { RuntimeContext } from '@mastra/core/runtime-context';
+import { BaseResearchAgentService } from './base-research-agent.service';
 
 @Injectable()
-export class UltraDeepResearchAgentService {
+export class UltraDeepResearchAgentService extends BaseResearchAgentService {
   async research(
     query: string,
     processor?: ProcessorType,
@@ -20,23 +19,13 @@ export class UltraDeepResearchAgentService {
       toolInput.processor = processor;
     }
 
-    const userId = 'api-user';
-    const threadId = `thread-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    const resourceId = `resource-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const runtimeContext = this.createRuntimeContext();
 
-    const runtimeContext = new RuntimeContext([
-      ['userId', userId],
-      ['threadId', threadId],
-      ['resourceId', resourceId],
-    ]);
-
-    const result = await ultraDeepResearchTool.execute({
+    return await ultraDeepResearchTool.execute({
       context: toolInput,
-      mastra: mastra,
+      mastra: this.getMastra(),
       runtimeContext,
     });
-
-    return result;
   }
 }
 

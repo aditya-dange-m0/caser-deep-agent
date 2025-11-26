@@ -1,24 +1,13 @@
-import { createOpenAI } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
 import { config } from 'dotenv';
-import { Memory } from '@mastra/memory';
-import { libSQLStore, libSQLVector } from '../memoryStore';
 import { 
   webSearchTool,
   advancedWebSearchTool,
   analyzeSearchResultsTool
 } from '../tools/web-search-tools';
+import { getDefaultLLM, createMemory } from './agent-utils';
 
 config();
-
-// Check if OpenAI API key is available for embeddings
-const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-
-const openai = hasOpenAIKey ? createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null;
-
-const llm = openai ? openai("gpt-4o-mini") : "google/gemini-2.0-flash";
 
 const getInstructions = () => `
     You are WebSearchAI, an advanced web search assistant with comprehensive real-time information retrieval capabilities.
@@ -77,26 +66,13 @@ const getInstructions = () => `
 export const webSearchAgent = new Agent({
   name: 'WebSearchAI',
   instructions: getInstructions(),
-  model: llm,
+  model: getDefaultLLM(),
   tools: {
     webSearch: webSearchTool,
     advancedWebSearch: advancedWebSearchTool,
     analyzeSearchResults: analyzeSearchResultsTool
   },
-  memory: new Memory({
-    storage: libSQLStore,
-    ...(hasOpenAIKey && {
-      vector: libSQLVector,
-      embedder: openai!.textEmbeddingModel('text-embedding-3-small'),
-    }),
-    options: {
-      lastMessages: 8,
-      semanticRecall: hasOpenAIKey ? { topK: 4, messageRange: 2 } : false,
-      threads: { generateTitle: true },
-      workingMemory: {
-        enabled: true,
-        scope: 'thread', // Default - memory is isolated per thread
-        template: `# User Search Profile
+  memory: createMemory(`# User Search Profile
 ## Search Preferences
 - Preferred Information Sources:
 - Search Topics of Interest:
@@ -133,8 +109,5 @@ export const webSearchAgent = new Agent({
 - Topics Requiring Multiple Searches:
 - Information Gaps Identified:
 
-`
-      },
-    },
-  }),
+`),
 });

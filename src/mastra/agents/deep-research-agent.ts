@@ -1,20 +1,9 @@
-import { createOpenAI } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
 import { config } from 'dotenv';
-import { Memory } from '@mastra/memory';
-import { libSQLStore, libSQLVector } from '../memoryStore';
 import { deepResearchTool } from '../tools/deep-research-tools';
+import { getDefaultLLM, createMemory } from './agent-utils';
 
 config();
-
-// Check if OpenAI API key is available for embeddings
-const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-
-const openai = hasOpenAIKey ? createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null;
-
-const llm = openai ? openai("gpt-4o-mini") : "google/gemini-2.0-flash";
 
 const getInstructions = () => `
     You are DeepResearchAI, a specialized research assistant designed for comprehensive and thorough research tasks.
@@ -72,24 +61,11 @@ const getInstructions = () => `
 export const deepResearchAgent = new Agent({
   name: 'DeepResearchAI',
   instructions: getInstructions(),
-  model: llm,
+  model: getDefaultLLM(),
   tools: {
     deepResearch: deepResearchTool,
   },
-  memory: new Memory({
-    storage: libSQLStore,
-    ...(hasOpenAIKey && {
-      vector: libSQLVector,
-      embedder: openai!.textEmbeddingModel('text-embedding-3-small'),
-    }),
-    options: {
-      lastMessages: 8,
-      semanticRecall: hasOpenAIKey ? { topK: 4, messageRange: 2 } : false,
-      threads: { generateTitle: true },
-      workingMemory: {
-        enabled: true,
-        scope: 'thread',
-        template: `# User Research Profile
+  memory: createMemory(`# User Research Profile
 ## Research Preferences
 - Preferred Research Depth: [Comprehensive, Thorough]
 - Research Topics of Interest:
@@ -126,9 +102,6 @@ export const deepResearchAgent = new Agent({
 - Topics Requiring Multiple Research Sessions:
 - Information Gaps Identified:
 
-`
-      },
-    },
-  }),
+`),
 });
 
