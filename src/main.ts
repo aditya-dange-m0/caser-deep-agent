@@ -24,13 +24,15 @@ async function bootstrap() {
     .setDescription(
       'API for web search and deep research functionality with Parallel AI Task API integration. ' +
       'Supports web search (lite, base processors), quick deep research (base, core processors), ' +
-      'deep research (core, pro processors), and ultra deep research (pro, ultra, ultra2x, ultra4x, ultra8x processors).',
+      'deep research (core, pro processors), ultra deep research (pro, ultra, ultra2x, ultra4x, ultra8x processors), ' +
+      'and FindAll entity discovery (base, core, pro generators).',
     )
     .setVersion('1.0')
     .addTag('web-search', 'Web search operations')
     .addTag('quick-deep-research', 'Quick deep research operations')
     .addTag('deep-research', 'Deep research operations')
     .addTag('ultra-deep-research', 'Ultra deep research operations')
+    .addTag('findall', 'FindAll entity discovery operations')
     .addBearerAuth()
     .build();
 

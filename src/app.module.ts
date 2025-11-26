@@ -5,6 +5,7 @@ import { WebSearchAgentModule } from './mastra/web-search-agent.module';
 import { QuickDeepResearchAgentModule } from './mastra/quick-deep-research-agent.module';
 import { DeepResearchAgentModule } from './mastra/deep-research-agent.module';
 import { UltraDeepResearchAgentModule } from './mastra/ultra-deep-research-agent.module';
+import { FindAllAgentModule } from './mastra/findall-agent.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { UltraDeepResearchAgentModule } from './mastra/ultra-deep-research-agent
     QuickDeepResearchAgentModule,
     DeepResearchAgentModule,
     UltraDeepResearchAgentModule,
+    FindAllAgentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
