@@ -3,15 +3,21 @@ import { PinoLogger } from '@mastra/loggers';
 import { libSQLStore } from './memoryStore';
 import { weatherAgent } from './agents/weather-agent';
 import { webSearchAgent } from './agents/web-search-agent';
+import { quickDeepResearchAgent } from './agents/quick-deep-research-agent';
+import { deepResearchAgent } from './agents/deep-research-agent';
+import { ultraDeepResearchAgent } from './agents/ultra-deep-research-agent';
 
 export const mastra = new Mastra({
   agents: {
     weatherAgent,
     webSearchAgent, // Web search agent with comprehensive tools and memory
+    quickDeepResearchAgent, // Quick deep research agent with base and core processors
+    deepResearchAgent, // Deep research agent with core and pro processors
+    ultraDeepResearchAgent, // Ultra deep research agent with pro, ultra, ultra2x, ultra4x, ultra8x processors
   },
   storage: libSQLStore,
   logger: new PinoLogger({
-    name: 'WebSearchAgent',
+    name: 'MastraAgents',
     level: 'info',
   }),
   observability: {

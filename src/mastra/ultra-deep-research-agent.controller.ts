@@ -1,0 +1,224 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Query,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiQuery,
+  ApiProperty,
+} from '@nestjs/swagger';
+import { UltraDeepResearchAgentService } from './services/ultra-deep-research-agent.service';
+import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+
+export enum ProcessorType {
+  PRO = 'pro',
+  ULTRA = 'ultra',
+  ULTRA2X = 'ultra2x',
+  ULTRA4X = 'ultra4x',
+  ULTRA8X = 'ultra8x',
+}
+
+export class UltraDeepResearchDto {
+  @ApiProperty({
+    description: 'The research query or topic to investigate with maximum depth',
+    example: 'exhaustive analysis of global climate change mitigation strategies',
+  })
+  @IsString()
+  query!: string;
+
+  @ApiProperty({
+    description: 'Processor to use: pro, ultra, ultra2x, ultra4x, or ultra8x (increasing depth and quality)',
+    enum: ProcessorType,
+    required: false,
+    default: ProcessorType.PRO,
+    example: ProcessorType.ULTRA,
+  })
+  @IsOptional()
+  @IsEnum(ProcessorType)
+  processor?: ProcessorType;
+
+  @ApiProperty({
+    description: 'Include detailed analysis and insights in the research output',
+    default: true,
+    required: false,
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeAnalysis?: boolean;
+}
+
+export class UltraDeepResearchResponseDto {
+  @ApiProperty({ description: 'Whether the research was successful' })
+  success!: boolean;
+
+  @ApiProperty({
+    description: 'Research report content',
+    required: false,
+  })
+  research?: any;
+
+  @ApiProperty({ description: 'Summary of the research', required: false })
+  summary?: any;
+
+  @ApiProperty({ description: 'Error message if research failed', required: false })
+  error?: string;
+}
+
+@ApiTags('ultra-deep-research')
+@Controller('api/ultra-deep-research')
+export class UltraDeepResearchAgentController {
+  constructor(
+    private readonly ultraDeepResearchAgentService: UltraDeepResearchAgentService,
+  ) {}
+
+  @Post('research')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Perform ultra deep research',
+    description:
+      'Performs ultra-comprehensive deep research using the Parallel AI Task API with pro, ultra, ultra2x, ultra4x, or ultra8x processors. Ideal for the most thorough research tasks requiring maximum depth and quality.',
+  })
+  @ApiBody({ type: UltraDeepResearchDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Research completed successfully',
+    type: UltraDeepResearchResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request parameters',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  })
+  async research(@Body() researchDto: UltraDeepResearchDto): Promise<UltraDeepResearchResponseDto> {
+    return await this.ultraDeepResearchAgentService.research(
+      researchDto.query,
+      researchDto.processor,
+      researchDto.includeAnalysis,
+    );
+  }
+
+  @Get('research')
+  @ApiOperation({
+    summary: 'Perform ultra deep research (GET)',
+    description:
+      'Performs ultra deep research using query parameters. Same functionality as POST endpoint.',
+  })
+  @ApiQuery({ name: 'query', description: 'Research query', required: true })
+  @ApiQuery({
+    name: 'processor',
+    enum: ProcessorType,
+    required: false,
+    description: 'Processor type: pro, ultra, ultra2x, ultra4x, or ultra8x',
+  })
+  @ApiQuery({
+    name: 'includeAnalysis',
+    required: false,
+    type: Boolean,
+    description: 'Include detailed analysis',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Research completed successfully',
+    type: UltraDeepResearchResponseDto,
+  })
+  async researchGet(
+    @Query('query') query: string,
+    @Query('processor') processor?: ProcessorType,
+    @Query('includeAnalysis') includeAnalysis?: string,
+  ): Promise<UltraDeepResearchResponseDto> {
+    return await this.ultraDeepResearchAgentService.research(
+      query,
+      processor,
+      includeAnalysis
+        ? includeAnalysis === 'true' || includeAnalysis === '1'
+        : undefined,
+    );
+  }
+
+  @Get('processors')
+  @ApiOperation({
+    summary: 'Get available processors',
+    description: 'Returns information about available processors (pro, ultra, ultra2x, ultra4x, ultra8x)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of available processors',
+    schema: {
+      type: 'object',
+      properties: {
+        processors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              latency: { type: 'string' },
+              cost: { type: 'string' },
+              useCase: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  getProcessors() {
+    return {
+      processors: [
+        {
+          name: 'pro',
+          description:
+            'High-quality processor. Provides thorough research with maximum analysis and depth.',
+          latency: '60-180 seconds',
+          cost: '$50 per 1,000 runs',
+          useCase: 'Thorough research, high-quality analysis',
+        },
+        {
+          name: 'ultra',
+          description:
+            'Ultra processor. Provides maximum depth and quality for exhaustive research.',
+          latency: '120-300 seconds',
+          cost: '$100 per 1,000 runs',
+          useCase: 'Ultra-comprehensive research, maximum depth',
+        },
+        {
+          name: 'ultra2x',
+          description:
+            'Ultra 2x processor. Provides even greater depth and analytical sophistication.',
+          latency: '180-450 seconds',
+          cost: '$200 per 1,000 runs',
+          useCase: 'Exhaustive research, maximum analytical depth',
+        },
+        {
+          name: 'ultra4x',
+          description:
+            'Ultra 4x processor. Provides the highest level of research depth and quality.',
+          latency: '300-600 seconds',
+          cost: '$400 per 1,000 runs',
+          useCase: 'Most exhaustive research, highest quality',
+        },
+        {
+          name: 'ultra8x',
+          description:
+            'Ultra 8x processor. Provides the absolute maximum research depth and analytical sophistication.',
+          latency: '600-1200 seconds',
+          cost: '$800 per 1,000 runs',
+          useCase: 'Absolute maximum research depth, ultimate quality',
+        },
+      ],
+    };
+  }
+}
+

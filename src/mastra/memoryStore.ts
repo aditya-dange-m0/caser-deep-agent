@@ -6,7 +6,8 @@ import { mkdirSync } from 'fs';
 import { dirname, resolve } from 'path';
 
 // Ensure data directory exists
-let dbPath = process.env.LIBSQL_URL || "file:./data/web-search-agent-memory.db";
+// This database is shared across all agents (web search, quick deep research, deep research, ultra deep research)
+let dbPath = process.env.LIBSQL_URL || "file:./data/mastra-agents-memory.db";
 if (dbPath.startsWith("file:")) {
   const dbFilePath = dbPath.replace("file:", "");
   // Resolve to absolute path to ensure it works from any working directory

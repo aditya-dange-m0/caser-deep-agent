@@ -23,7 +23,54 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository with Web Search API integration using Parallel AI Task API.
+
+## Features
+
+- **Web Search API**: Comprehensive web search using Parallel AI Task API
+- **Processor Toggle**: Choose between `lite` (fast, cost-effective) or `base` (comprehensive) processors
+- **Swagger UI**: Interactive API documentation at `/api-docs`
+- **RESTful API**: Both GET and POST endpoints for web search
+- **Yarn Package Manager**: Uses Yarn for dependency management
+
+## API Documentation
+
+Once the server is running, access the Swagger UI at:
+- **Swagger UI**: http://localhost:3000/api-docs
+
+## API Endpoints
+
+### Web Search
+
+- **POST** `/api/web-search/search` - Perform a web search with request body
+- **GET** `/api/web-search/search` - Perform a web search with query parameters
+- **GET** `/api/web-search/processors` - Get information about available processors
+
+### Processor Selection
+
+You can choose processors in two ways:
+
+1. **Direct processor selection**: Set `processor` parameter to `lite` or `base`
+2. **Search depth**: Set `searchDepth` to `basic` (uses lite) or `advanced` (uses base)
+
+If both are provided, `processor` takes precedence.
+
+### Example Requests
+
+**POST Request:**
+```json
+{
+  "query": "digital twins latest developments 2024",
+  "processor": "base",
+  "maxResults": 10,
+  "includeExcerpts": true
+}
+```
+
+**GET Request:**
+```
+GET /api/web-search/search?query=digital%20twins&processor=base&maxResults=10
+```
 
 ## Project setup
 
@@ -34,15 +81,21 @@ $ yarn install
 ## Compile and run the project
 
 ```bash
-# development
-$ yarn run start
+# Build the project (generates dist/ files)
+$ yarn build
 
-# watch mode
-$ yarn run start:dev
+# Development mode (auto-compiles and watches for changes)
+$ yarn start:dev
 
-# production mode
-$ yarn run start:prod
+# Production mode (requires build first)
+$ yarn build
+$ yarn start:prod
 ```
+
+**Note**: The `dist/` files are automatically generated when you run:
+- `yarn start:dev` - Automatically compiles and watches for changes
+- `yarn build` - Manually builds the project
+- `yarn start:prod` - Runs the pre-built files from `dist/` (requires `yarn build` first)
 
 ## Run tests
 
