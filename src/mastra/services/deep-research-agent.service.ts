@@ -8,11 +8,11 @@ export class DeepResearchAgentService extends BaseResearchAgentService {
   async research(
     query: string,
     processor?: ProcessorType,
-    includeAnalysis?: boolean,
+    outputFormat?: 'auto' | 'text',
   ): Promise<any> {
     const toolInput: any = {
       query,
-      includeAnalysis: includeAnalysis !== undefined ? includeAnalysis : true,
+      outputFormat: outputFormat || 'auto',
     };
 
     if (processor) {

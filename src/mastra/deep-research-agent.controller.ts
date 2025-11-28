@@ -43,14 +43,15 @@ export class DeepResearchDto {
   processor?: ProcessorType;
 
   @ApiProperty({
-    description: 'Include detailed analysis and insights in the research output',
-    default: true,
+    description: 'Output format: auto (structured JSON) or text (markdown report)',
+    enum: ['auto', 'text'],
     required: false,
-    example: true,
+    default: 'auto',
+    example: 'auto',
   })
   @IsOptional()
-  @IsBoolean()
-  includeAnalysis?: boolean;
+  @IsEnum(['auto', 'text'])
+  outputFormat?: 'auto' | 'text';
 }
 
 export class DeepResearchResponseDto {
@@ -102,7 +103,7 @@ export class DeepResearchAgentController {
     return await this.deepResearchAgentService.research(
       researchDto.query,
       researchDto.processor,
-      researchDto.includeAnalysis,
+      researchDto.outputFormat,
     );
   }
 
@@ -120,10 +121,10 @@ export class DeepResearchAgentController {
     description: 'Processor type: core or pro',
   })
   @ApiQuery({
-    name: 'includeAnalysis',
+    name: 'outputFormat',
+    enum: ['auto', 'text'],
     required: false,
-    type: Boolean,
-    description: 'Include detailed analysis',
+    description: 'Output format: auto (structured JSON) or text (markdown)',
   })
   @ApiResponse({
     status: 200,
@@ -133,14 +134,12 @@ export class DeepResearchAgentController {
   async researchGet(
     @Query('query') query: string,
     @Query('processor') processor?: ProcessorType,
-    @Query('includeAnalysis') includeAnalysis?: string,
+    @Query('outputFormat') outputFormat?: 'auto' | 'text',
   ): Promise<DeepResearchResponseDto> {
     return await this.deepResearchAgentService.research(
       query,
       processor,
-      includeAnalysis
-        ? includeAnalysis === 'true' || includeAnalysis === '1'
-        : undefined,
+      outputFormat,
     );
   }
 

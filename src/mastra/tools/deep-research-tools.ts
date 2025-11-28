@@ -255,10 +255,11 @@ Deliver a well-structured research report that covers all aspects of the topic.`
 export const deepResearchTool = createTool({
   id: 'deepResearch',
   description:
-    'Performs comprehensive deep research using Parallel AI Task API with core or pro processors. Ideal for thorough research tasks requiring high-quality analysis.',
+    'Performs comprehensive deep research using Parallel AI Task API with core or pro processors. Ideal for thorough research tasks requiring high-quality analysis. Returns structured intelligence reports with citations and verification.',
   inputSchema: z.object({
     query: z
       .string()
+      .max(15000, 'Input must be under 15,000 characters for optimal performance')
       .describe('The research query or topic to investigate deeply'),
     processor: z
       .enum(['core', 'pro'])
@@ -267,12 +268,12 @@ export const deepResearchTool = createTool({
       .describe(
         'Processor to use: core (balanced) or pro (high-quality analysis). Default: core.',
       ),
-    includeAnalysis: z
-      .boolean()
+    outputFormat: z
+      .enum(['auto', 'text'])
       .optional()
-      .default(true)
+      .default('auto')
       .describe(
-        'Include detailed analysis and insights in the research output',
+        'Output format: auto (structured JSON) or text (markdown report). Default: auto.',
       ),
   }),
   outputSchema: z.object({
@@ -285,12 +286,19 @@ export const deepResearchTool = createTool({
     try {
       console.log('deepResearch: Starting execution');
 
-      const { query, processor = 'core', includeAnalysis = true } = context;
+      const { query, processor = 'core', outputFormat = 'auto' } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
         return {
           success: false,
           error: 'Research query is required and must be a non-empty string',
+        };
+      }
+
+      if (query.length > 15000) {
+        return {
+          success: false,
+          error: 'Research query must be under 15,000 characters for optimal performance',
         };
       }
 
@@ -306,26 +314,23 @@ export const deepResearchTool = createTool({
         };
       }
 
-      const taskInput = `Perform an extensive and comprehensive deep research on: ${query}. 
-
-Requirements:
-- Conduct thorough, multi-faceted investigation and analysis
-- Gather information from diverse, credible, and authoritative sources
-- Provide detailed insights, findings, and comprehensive analysis
-- Include relevant data, statistics, evidence, and expert opinions
-- ${includeAnalysis ? 'Include in-depth analysis, trends, implications, and future outlook' : 'Provide comprehensive factual information'}
-- Structure the research with clear sections, subsections, and well-reasoned conclusions
-- Cite sources and provide references where applicable
-- Identify key stakeholders, trends, and patterns
-- Address potential counterarguments or alternative perspectives
-
-Deliver a comprehensive, well-structured research report that thoroughly covers all aspects of the topic with depth and rigor.`;
+      // For Deep Research, use the query directly - no need to wrap in instructions
+      // The processor will handle the research orchestration
+      const taskInput = query;
 
       let taskRun;
       try {
+        // Configure task spec with output schema
+        const taskSpec: any = {
+          output_schema: outputFormat === 'text' 
+            ? { type: 'text' }
+            : { type: 'auto' }, // auto is default, but explicit is better
+        };
+
         taskRun = await client.taskRun.create({
           input: taskInput,
           processor: processor,
+          task_spec: taskSpec,
         });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -346,12 +351,15 @@ Deliver a comprehensive, well-structured research report that thoroughly covers 
 
       console.log('deepResearch: Task created with run ID', runId);
       console.log(
-        'deepResearch: Polling for results (this may take longer for pro processor)...',
+        `deepResearch: Polling for results (this may take longer for ${processor} processor)...`,
       );
 
+      // Deep Research can take longer, especially for pro processor
+      const maxAttempts = processor === 'pro' ? 216 : 144; // 216 * 25s = 1.5 hours for pro
+      
       let result;
       try {
-        result = await pollTaskResult(client, runId, 144, 25);
+        result = await pollTaskResult(client, runId, maxAttempts, 25);
         console.log('deepResearch: Polling completed successfully');
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -363,28 +371,67 @@ Deliver a comprehensive, well-structured research report that thoroughly covers 
       }
 
       if (result?.output) {
-        const outputText =
-          typeof result.output === 'string'
-            ? result.output
+        // Handle structured output from Deep Research
+        let researchOutput: any;
+        let sources: any[] = [];
+
+        if (outputFormat === 'text') {
+          // Text mode: output is markdown string
+          researchOutput = typeof result.output === 'string' 
+            ? result.output 
             : JSON.stringify(result.output);
+          
+          // In text mode, basis is a flat list of citations
+          if (result.basis && Array.isArray(result.basis)) {
+            sources = result.basis
+              .map((item: any) => ({
+                url: item.url || item.source,
+                title: item.title,
+                excerpt: item.excerpt,
+              }))
+              .filter((item: any) => item.url);
+          }
+        } else {
+          // Auto mode: output is structured JSON with nested content
+          researchOutput = result.output;
+          
+          // In auto mode, basis is nested FieldBasis array
+          if (result.basis && Array.isArray(result.basis)) {
+            sources = result.basis.flatMap((fieldBasis: any) => {
+              if (fieldBasis.citations && Array.isArray(fieldBasis.citations)) {
+                return fieldBasis.citations.map((citation: any) => ({
+                  field: fieldBasis.field,
+                  url: citation.url,
+                  title: citation.title,
+                  excerpt: citation.excerpts?.[0] || citation.excerpt,
+                  confidence: fieldBasis.confidence,
+                  reasoning: fieldBasis.reasoning,
+                }));
+              }
+              return [];
+            });
+          }
+        }
 
         const summary = {
           query: query,
           processor: processor,
-          hasAnalysis: includeAnalysis,
-          outputLength: outputText.length,
-          sources:
-            result.basis && Array.isArray(result.basis)
-              ? result.basis
-                  .map((item: any) => item.url || item.source)
-                  .filter(Boolean)
-              : [],
+          outputFormat: outputFormat,
+          outputLength: typeof researchOutput === 'string' 
+            ? researchOutput.length 
+            : JSON.stringify(researchOutput).length,
+          totalSources: sources.length,
+          uniqueSources: [...new Set(sources.map(s => s.url))].length,
+          fields: outputFormat === 'auto' && result.basis 
+            ? result.basis.map((fb: any) => fb.field).filter(Boolean)
+            : undefined,
         };
 
         return {
           success: true,
-          research: outputText,
+          research: researchOutput,
           summary: summary,
+          sources: sources.slice(0, 50), // Limit to first 50 sources
         };
       }
 

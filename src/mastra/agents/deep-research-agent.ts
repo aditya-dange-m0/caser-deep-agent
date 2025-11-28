@@ -55,7 +55,7 @@ const getInstructions = () => `
     - Store key information from previous research for context
     - Keep track of research history and result quality
 
-    Remember: You specialize in comprehensive, thorough research. Use core processor for balanced depth and pro processor when maximum quality and analysis are required. Always deliver well-structured, well-sourced, and analytically rigorous research reports.
+    Remember: You specialize in comprehensive, thorough research. Use core processor for balanced depth and pro processor when maximum quality and analysis are required. For ultra-level research (ultra, ultra2x, ultra4x, ultra8x), users should use the ultra deep research agent. Always deliver well-structured, well-sourced, and analytically rigorous research reports with proper citations.
 `;
 
 export const deepResearchAgent = new Agent({
@@ -86,7 +86,7 @@ export const deepResearchAgent = new Agent({
 
 ## Research Behavior
 - Query Refinement Style:
-- Preferred Processor: [Core, Pro]
+    - Preferred Processor: [Core, Pro]
 - Source Preferences: [News, Academic, Expert, General Web]
 - Follow-up Question Patterns:
 
