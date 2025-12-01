@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { quickDeepResearchTool } from '../tools/deep-research-tools';
-import { ProcessorType } from '../quick-deep-research-agent.controller';
-import { BaseResearchAgentService } from './base-research-agent.service';
+import { ultraDeepResearchTool } from '../../../tools/deep-research-tools';
+import { ProcessorType } from '../ultra-deep-research-agent.controller';
+import { BaseResearchAgentService } from '../../../shared/services/base-research-agent.service';
 
 @Injectable()
-export class QuickDeepResearchAgentService extends BaseResearchAgentService {
+export class UltraDeepResearchAgentService extends BaseResearchAgentService {
   async research(
     query: string,
     processor?: ProcessorType,
@@ -21,11 +21,10 @@ export class QuickDeepResearchAgentService extends BaseResearchAgentService {
 
     const runtimeContext = this.createRuntimeContext();
 
-    return await quickDeepResearchTool.execute({
+    return await ultraDeepResearchTool.execute({
       context: toolInput,
       mastra: this.getMastra(),
       runtimeContext,
     });
   }
 }
-

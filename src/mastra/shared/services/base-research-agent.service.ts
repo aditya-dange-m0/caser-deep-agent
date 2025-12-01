@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { mastra } from '../index';
+import { mastra } from '../../index';
 import { RuntimeContext } from '@mastra/core/runtime-context';
 
 @Injectable()
@@ -20,4 +20,3 @@ export abstract class BaseResearchAgentService {
     return mastra;
   }
 }
-

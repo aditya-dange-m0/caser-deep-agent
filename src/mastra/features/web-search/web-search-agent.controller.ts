@@ -6,6 +6,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Sse,
+  MessageEvent,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,8 +19,17 @@ import {
   ApiQuery,
   ApiProperty,
 } from '@nestjs/swagger';
+import { Observable } from 'rxjs';
 import { WebSearchAgentService } from './services/web-search-agent.service';
-import { IsString, IsOptional, IsEnum, IsNumber, Min, Max } from 'class-validator';
+import { WebSearchStreamingService } from './services/web-search-streaming.service';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum ProcessorType {
@@ -38,7 +51,8 @@ export class WebSearchDto {
   query!: string;
 
   @ApiProperty({
-    description: 'Processor to use: lite (faster, cost-effective) or base (more comprehensive)',
+    description:
+      'Processor to use: lite (faster, cost-effective) or base (more comprehensive)',
     enum: ProcessorType,
     required: false,
     example: ProcessorType.BASE,
@@ -98,15 +112,21 @@ export class WebSearchResponseDto {
   @ApiProperty({ description: 'Summary of the search', required: false })
   summary?: any;
 
-  @ApiProperty({ description: 'Error message if search failed', required: false })
+  @ApiProperty({
+    description: 'Error message if search failed',
+    required: false,
+  })
   error?: string;
 }
 
 @ApiTags('web-search')
 @Controller('api/web-search')
 export class WebSearchAgentController {
+  private readonly logger = new Logger(WebSearchAgentController.name);
+
   constructor(
     private readonly webSearchAgentService: WebSearchAgentService,
+    private readonly streamingService: WebSearchStreamingService,
   ) {}
 
   @Post('search')
@@ -131,13 +151,23 @@ export class WebSearchAgentController {
     description: 'Internal server error',
   })
   async search(@Body() searchDto: WebSearchDto): Promise<WebSearchResponseDto> {
-    return await this.webSearchAgentService.search(
-      searchDto.query,
-      searchDto.processor,
-      searchDto.searchDepth,
-      searchDto.maxResults,
-      searchDto.includeExcerpts,
+    this.logger.log(
+      `[Search] POST request received - Query: "${searchDto.query.substring(0, 100)}${searchDto.query.length > 100 ? '...' : ''}", Processor: ${searchDto.processor || 'lite'}`,
     );
+    try {
+      const result = await this.webSearchAgentService.search(
+        searchDto.query,
+        searchDto.processor,
+        searchDto.searchDepth,
+        searchDto.maxResults,
+        searchDto.includeExcerpts,
+      );
+      this.logger.log(`[Search] POST request completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[Search] POST request failed:`, error);
+      throw error;
+    }
   }
 
   @Get('search')
@@ -183,21 +213,121 @@ export class WebSearchAgentController {
     @Query('maxResults') maxResults?: string,
     @Query('includeExcerpts') includeExcerpts?: string,
   ): Promise<WebSearchResponseDto> {
-    return await this.webSearchAgentService.search(
+    this.logger.log(
+      `[Search] GET request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || 'lite'}`,
+    );
+    try {
+      const result = await this.webSearchAgentService.search(
+        query,
+        processor,
+        searchDepth,
+        maxResults ? Number(maxResults) : undefined,
+        includeExcerpts
+          ? includeExcerpts === 'true' || includeExcerpts === '1'
+          : undefined,
+      );
+      this.logger.log(`[Search] GET request completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[Search] GET request failed:`, error);
+      throw error;
+    }
+  }
+
+  @Get('search/stream')
+  @Sse()
+  @ApiOperation({
+    summary: 'Stream web search progress (Server-Sent Events)',
+    description:
+      'Performs a web search and streams real-time progress updates via Server-Sent Events (SSE). ' +
+      'Ideal for search tasks where you want to show progress to users.',
+  })
+  @ApiQuery({
+    name: 'query',
+    description: 'The search query or question to search for on the web',
+    required: true,
+    example: 'digital twins latest developments 2024',
+  })
+  @ApiQuery({
+    name: 'processor',
+    enum: ProcessorType,
+    required: false,
+    description:
+      'Processor type: lite (faster, cost-effective) or base (more comprehensive)',
+    example: ProcessorType.BASE,
+  })
+  @ApiQuery({
+    name: 'maxResults',
+    required: false,
+    type: Number,
+    description: 'Maximum number of results (1-50)',
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'includeExcerpts',
+    required: false,
+    type: Boolean,
+    description: 'Include detailed excerpts from search results',
+    example: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Server-Sent Events stream of web search progress',
+    content: {
+      'text/event-stream': {
+        schema: {
+          type: 'string',
+          example:
+            'data: {"type":"connected","data":{"message":"Connected, starting web search...","query":"your query","processor":"lite","maxResults":10}}\n\ndata: {"type":"task_run.state","data":{"run":{"status":"running"}}}\n\n',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request parameters (missing query)',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error during streaming',
+  })
+  streamSearch(
+    @Query('query') query: string,
+    @Query('processor') processor?: ProcessorType,
+    @Query('maxResults') maxResults?: string,
+    @Query('includeExcerpts') includeExcerpts?: string,
+  ): Observable<MessageEvent> {
+    this.logger.log(
+      `[Stream] SSE stream request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || ProcessorType.LITE}`,
+    );
+    if (!query) {
+      this.logger.warn(
+        '[Stream] SSE stream request rejected: Query parameter is missing',
+      );
+      throw new BadRequestException('Query parameter is required');
+    }
+    const maxResultsNum = maxResults ? Number(maxResults) : 10;
+    const includeExcerptsBool = includeExcerpts
+      ? includeExcerpts === 'true' || includeExcerpts === '1'
+      : true;
+
+    // Determine processor based on query param or default to lite
+    const finalProcessor = processor || ProcessorType.LITE;
+
+    this.logger.debug(`[Stream] Returning SSE observable for web search`);
+    return this.streamingService.streamSearchObservable(
       query,
-      processor,
-      searchDepth,
-      maxResults ? Number(maxResults) : undefined,
-      includeExcerpts
-        ? includeExcerpts === 'true' || includeExcerpts === '1'
-        : undefined,
+      finalProcessor,
+      maxResultsNum,
+      includeExcerptsBool,
     );
   }
 
   @Get('processors')
   @ApiOperation({
     summary: 'Get available processors',
-    description: 'Returns information about available processors (lite and base)',
+    description:
+      'Returns information about available processors (lite and base)',
   })
   @ApiResponse({
     status: 200,
@@ -244,4 +374,3 @@ export class WebSearchAgentController {
     };
   }
 }
-

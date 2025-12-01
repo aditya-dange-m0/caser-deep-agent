@@ -1,6 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { Memory } from '@mastra/memory';
-import { libSQLStore, libSQLVector } from '../memoryStore';
+import { libSQLStore, libSQLVector } from '../shared/storage/memory-store';
 
 // Check if OpenAI API key is available for embeddings
 export const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
@@ -33,4 +33,3 @@ export const createMemory = (workingMemoryTemplate: string) => {
     },
   });
 };
-

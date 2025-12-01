@@ -6,6 +6,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Sse,
+  MessageEvent,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,7 +19,9 @@ import {
   ApiQuery,
   ApiProperty,
 } from '@nestjs/swagger';
+import { Observable } from 'rxjs';
 import { QuickDeepResearchAgentService } from './services/quick-deep-research-agent.service';
+import { QuickDeepResearchStreamingService } from './services/quick-deep-research-streaming.service';
 import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
 
 export enum ProcessorType {
@@ -32,7 +38,8 @@ export class QuickDeepResearchDto {
   query!: string;
 
   @ApiProperty({
-    description: 'Processor to use: base (faster, cost-effective) or core (more comprehensive)',
+    description:
+      'Processor to use: base (faster, cost-effective) or core (more comprehensive)',
     enum: ProcessorType,
     required: false,
     default: ProcessorType.BASE,
@@ -43,7 +50,8 @@ export class QuickDeepResearchDto {
   processor?: ProcessorType;
 
   @ApiProperty({
-    description: 'Include detailed analysis and insights in the research output',
+    description:
+      'Include detailed analysis and insights in the research output',
     default: true,
     required: false,
     example: true,
@@ -66,15 +74,21 @@ export class QuickDeepResearchResponseDto {
   @ApiProperty({ description: 'Summary of the research', required: false })
   summary?: any;
 
-  @ApiProperty({ description: 'Error message if research failed', required: false })
+  @ApiProperty({
+    description: 'Error message if research failed',
+    required: false,
+  })
   error?: string;
 }
 
 @ApiTags('quick-deep-research')
 @Controller('api/quick-deep-research')
 export class QuickDeepResearchAgentController {
+  private readonly logger = new Logger(QuickDeepResearchAgentController.name);
+
   constructor(
     private readonly quickDeepResearchAgentService: QuickDeepResearchAgentService,
+    private readonly streamingService: QuickDeepResearchStreamingService,
   ) {}
 
   @Post('research')
@@ -98,12 +112,24 @@ export class QuickDeepResearchAgentController {
     status: 500,
     description: 'Internal server error',
   })
-  async research(@Body() researchDto: QuickDeepResearchDto): Promise<QuickDeepResearchResponseDto> {
-    return await this.quickDeepResearchAgentService.research(
-      researchDto.query,
-      researchDto.processor,
-      researchDto.includeAnalysis,
+  async research(
+    @Body() researchDto: QuickDeepResearchDto,
+  ): Promise<QuickDeepResearchResponseDto> {
+    this.logger.log(
+      `[Research] POST request received - Query: "${researchDto.query.substring(0, 100)}${researchDto.query.length > 100 ? '...' : ''}", Processor: ${researchDto.processor || 'base'}`,
     );
+    try {
+      const result = await this.quickDeepResearchAgentService.research(
+        researchDto.query,
+        researchDto.processor,
+        researchDto.includeAnalysis,
+      );
+      this.logger.log(`[Research] POST request completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[Research] POST request failed:`, error);
+      throw error;
+    }
   }
 
   @Get('research')
@@ -135,19 +161,95 @@ export class QuickDeepResearchAgentController {
     @Query('processor') processor?: ProcessorType,
     @Query('includeAnalysis') includeAnalysis?: string,
   ): Promise<QuickDeepResearchResponseDto> {
-    return await this.quickDeepResearchAgentService.research(
+    this.logger.log(
+      `[Research] GET request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || 'base'}`,
+    );
+    try {
+      const result = await this.quickDeepResearchAgentService.research(
+        query,
+        processor,
+        includeAnalysis
+          ? includeAnalysis === 'true' || includeAnalysis === '1'
+          : undefined,
+      );
+      this.logger.log(`[Research] GET request completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[Research] GET request failed:`, error);
+      throw error;
+    }
+  }
+
+  @Get('research/stream')
+  @Sse()
+  @ApiOperation({
+    summary: 'Stream quick deep research progress (Server-Sent Events)',
+    description:
+      'Performs quick deep research and streams real-time progress updates via Server-Sent Events (SSE). ' +
+      'Ideal for long-running research tasks where you want to show progress to users.',
+  })
+  @ApiQuery({
+    name: 'query',
+    description: 'The research query or topic to investigate deeply',
+    required: true,
+    example: 'impact of artificial intelligence on healthcare',
+  })
+  @ApiQuery({
+    name: 'processor',
+    enum: ProcessorType,
+    required: false,
+    description:
+      'Processor type: base (faster, cost-effective) or core (more comprehensive)',
+    example: ProcessorType.BASE,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Server-Sent Events stream of quick deep research progress',
+    content: {
+      'text/event-stream': {
+        schema: {
+          type: 'string',
+          example:
+            'data: {"type":"connected","data":{"message":"Connected, starting quick deep research...","query":"your query","processor":"base"}}\n\ndata: {"type":"task_run.state","data":{"run":{"status":"running"}}}\n\n',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request parameters (missing query)',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error during streaming',
+  })
+  streamResearch(
+    @Query('query') query: string,
+    @Query('processor') processor?: ProcessorType,
+  ): Observable<MessageEvent> {
+    this.logger.log(
+      `[Stream] SSE stream request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || ProcessorType.BASE}`,
+    );
+    if (!query) {
+      this.logger.warn(
+        '[Stream] SSE stream request rejected: Query parameter is missing',
+      );
+      throw new BadRequestException('Query parameter is required');
+    }
+    this.logger.debug(
+      `[Stream] Returning SSE observable for quick deep research`,
+    );
+    return this.streamingService.streamResearchObservable(
       query,
-      processor,
-      includeAnalysis
-        ? includeAnalysis === 'true' || includeAnalysis === '1'
-        : undefined,
+      processor || ProcessorType.BASE,
     );
   }
 
   @Get('processors')
   @ApiOperation({
     summary: 'Get available processors',
-    description: 'Returns information about available processors (base and core)',
+    description:
+      'Returns information about available processors (base and core)',
   })
   @ApiResponse({
     status: 200,
@@ -194,4 +296,3 @@ export class QuickDeepResearchAgentController {
     };
   }
 }
-

@@ -6,6 +6,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Sse,
+  MessageEvent,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,7 +19,9 @@ import {
   ApiQuery,
   ApiProperty,
 } from '@nestjs/swagger';
+import { Observable } from 'rxjs';
 import { UltraDeepResearchAgentService } from './services/ultra-deep-research-agent.service';
+import { UltraDeepResearchStreamingService } from './services/ultra-deep-research-streaming.service';
 import { IsString, IsOptional, IsEnum, IsBoolean } from 'class-validator';
 
 export enum ProcessorType {
@@ -28,14 +34,17 @@ export enum ProcessorType {
 
 export class UltraDeepResearchDto {
   @ApiProperty({
-    description: 'The research query or topic to investigate with maximum depth',
-    example: 'exhaustive analysis of global climate change mitigation strategies',
+    description:
+      'The research query or topic to investigate with maximum depth',
+    example:
+      'exhaustive analysis of global climate change mitigation strategies',
   })
   @IsString()
   query!: string;
 
   @ApiProperty({
-    description: 'Processor to use: pro, ultra, ultra2x, ultra4x, or ultra8x (increasing depth and quality)',
+    description:
+      'Processor to use: pro, ultra, ultra2x, ultra4x, or ultra8x (increasing depth and quality)',
     enum: ProcessorType,
     required: false,
     default: ProcessorType.PRO,
@@ -46,7 +55,8 @@ export class UltraDeepResearchDto {
   processor?: ProcessorType;
 
   @ApiProperty({
-    description: 'Include detailed analysis and insights in the research output',
+    description:
+      'Include detailed analysis and insights in the research output',
     default: true,
     required: false,
     example: true,
@@ -69,15 +79,21 @@ export class UltraDeepResearchResponseDto {
   @ApiProperty({ description: 'Summary of the research', required: false })
   summary?: any;
 
-  @ApiProperty({ description: 'Error message if research failed', required: false })
+  @ApiProperty({
+    description: 'Error message if research failed',
+    required: false,
+  })
   error?: string;
 }
 
 @ApiTags('ultra-deep-research')
 @Controller('api/ultra-deep-research')
 export class UltraDeepResearchAgentController {
+  private readonly logger = new Logger(UltraDeepResearchAgentController.name);
+
   constructor(
     private readonly ultraDeepResearchAgentService: UltraDeepResearchAgentService,
+    private readonly streamingService: UltraDeepResearchStreamingService,
   ) {}
 
   @Post('research')
@@ -101,12 +117,24 @@ export class UltraDeepResearchAgentController {
     status: 500,
     description: 'Internal server error',
   })
-  async research(@Body() researchDto: UltraDeepResearchDto): Promise<UltraDeepResearchResponseDto> {
-    return await this.ultraDeepResearchAgentService.research(
-      researchDto.query,
-      researchDto.processor,
-      researchDto.includeAnalysis,
+  async research(
+    @Body() researchDto: UltraDeepResearchDto,
+  ): Promise<UltraDeepResearchResponseDto> {
+    this.logger.log(
+      `[Research] POST request received - Query: "${researchDto.query.substring(0, 100)}${researchDto.query.length > 100 ? '...' : ''}", Processor: ${researchDto.processor || 'pro'}`,
     );
+    try {
+      const result = await this.ultraDeepResearchAgentService.research(
+        researchDto.query,
+        researchDto.processor,
+        researchDto.includeAnalysis,
+      );
+      this.logger.log(`[Research] POST request completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[Research] POST request failed:`, error);
+      throw error;
+    }
   }
 
   @Get('research')
@@ -138,19 +166,97 @@ export class UltraDeepResearchAgentController {
     @Query('processor') processor?: ProcessorType,
     @Query('includeAnalysis') includeAnalysis?: string,
   ): Promise<UltraDeepResearchResponseDto> {
-    return await this.ultraDeepResearchAgentService.research(
+    this.logger.log(
+      `[Research] GET request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || 'pro'}`,
+    );
+    try {
+      const result = await this.ultraDeepResearchAgentService.research(
+        query,
+        processor,
+        includeAnalysis
+          ? includeAnalysis === 'true' || includeAnalysis === '1'
+          : undefined,
+      );
+      this.logger.log(`[Research] GET request completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[Research] GET request failed:`, error);
+      throw error;
+    }
+  }
+
+  @Get('research/stream')
+  @Sse()
+  @ApiOperation({
+    summary: 'Stream ultra deep research progress (Server-Sent Events)',
+    description:
+      'Performs ultra deep research and streams real-time progress updates via Server-Sent Events (SSE). ' +
+      'Ideal for long-running research tasks where you want to show progress to users.',
+  })
+  @ApiQuery({
+    name: 'query',
+    description:
+      'The research query or topic to investigate with maximum depth',
+    required: true,
+    example:
+      'exhaustive analysis of global climate change mitigation strategies',
+  })
+  @ApiQuery({
+    name: 'processor',
+    enum: ProcessorType,
+    required: false,
+    description:
+      'Processor type: pro, ultra, ultra2x, ultra4x, or ultra8x (increasing depth and quality)',
+    example: ProcessorType.PRO,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Server-Sent Events stream of ultra deep research progress',
+    content: {
+      'text/event-stream': {
+        schema: {
+          type: 'string',
+          example:
+            'data: {"type":"connected","data":{"message":"Connected, starting ultra deep research...","query":"your query","processor":"pro"}}\n\ndata: {"type":"task_run.state","data":{"run":{"status":"running"}}}\n\n',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request parameters (missing query)',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error during streaming',
+  })
+  streamResearch(
+    @Query('query') query: string,
+    @Query('processor') processor?: ProcessorType,
+  ): Observable<MessageEvent> {
+    this.logger.log(
+      `[Stream] SSE stream request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || ProcessorType.PRO}`,
+    );
+    if (!query) {
+      this.logger.warn(
+        '[Stream] SSE stream request rejected: Query parameter is missing',
+      );
+      throw new BadRequestException('Query parameter is required');
+    }
+    this.logger.debug(
+      `[Stream] Returning SSE observable for ultra deep research`,
+    );
+    return this.streamingService.streamResearchObservable(
       query,
-      processor,
-      includeAnalysis
-        ? includeAnalysis === 'true' || includeAnalysis === '1'
-        : undefined,
+      processor || ProcessorType.PRO,
     );
   }
 
   @Get('processors')
   @ApiOperation({
     summary: 'Get available processors',
-    description: 'Returns information about available processors (pro, ultra, ultra2x, ultra4x, ultra8x)',
+    description:
+      'Returns information about available processors (pro, ultra, ultra2x, ultra4x, ultra8x)',
   })
   @ApiResponse({
     status: 200,
@@ -221,4 +327,3 @@ export class UltraDeepResearchAgentController {
     };
   }
 }
-

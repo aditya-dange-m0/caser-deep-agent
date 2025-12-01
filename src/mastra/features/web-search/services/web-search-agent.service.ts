@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { webSearchTool } from '../tools/web-search-tools';
+import { webSearchTool } from '../../../tools/web-search-tools';
 import { ProcessorType, SearchDepth } from '../web-search-agent.controller';
-import { BaseResearchAgentService } from './base-research-agent.service';
+import { BaseResearchAgentService } from '../../../shared/services/base-research-agent.service';
 
 @Injectable()
 export class WebSearchAgentService extends BaseResearchAgentService {

@@ -5,8 +5,8 @@ import {
   findAllStatusTool,
   findAllResultsTool,
   findAllCompleteTool,
-} from '../tools/findall-tools';
-import { BaseResearchAgentService } from './base-research-agent.service';
+} from '../../../tools/findall-tools';
+import { BaseResearchAgentService } from '../../../shared/services/base-research-agent.service';
 
 export enum GeneratorType {
   BASE = 'base',
