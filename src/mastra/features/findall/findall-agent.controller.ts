@@ -7,8 +7,6 @@ import {
   Param,
   HttpCode,
   HttpStatus,
-  Sse,
-  MessageEvent,
   BadRequestException,
   Logger,
 } from '@nestjs/common';
@@ -21,9 +19,7 @@ import {
   ApiParam,
   ApiProperty,
 } from '@nestjs/swagger';
-import { Observable } from 'rxjs';
 import { FindAllAgentService, GeneratorType } from './services/findall-agent.service';
-import { FindAllStreamingService } from './services/findall-streaming.service';
 import {
   IsString,
   IsOptional,
@@ -283,7 +279,6 @@ export class FindAllAgentController {
 
   constructor(
     private readonly findAllAgentService: FindAllAgentService,
-    private readonly streamingService: FindAllStreamingService,
   ) {}
 
   @Post('ingest')
@@ -472,143 +467,6 @@ export class FindAllAgentController {
       this.logger.error(`[Complete] POST request failed:`, error);
       throw error;
     }
-  }
-
-  @Get('complete/stream')
-  @Sse()
-  @ApiOperation({
-    summary: 'Stream FindAll complete workflow progress (Server-Sent Events)',
-    description:
-      'Performs complete FindAll workflow (ingest + run + wait for completion) and streams real-time progress updates via Server-Sent Events (SSE). ' +
-      'Uses polling to check status and stream updates. Ideal for long-running FindAll tasks where you want to show progress to users.',
-  })
-  @ApiQuery({
-    name: 'objective',
-    description:
-      'Natural language query describing what entities to find (e.g., "FindAll portfolio companies of Khosla Ventures founded after 2020")',
-    required: true,
-    example: 'FindAll portfolio companies of Khosla Ventures founded after 2020',
-  })
-  @ApiQuery({
-    name: 'generator',
-    enum: GeneratorType,
-    required: false,
-    description: 'Generator to use: base (faster, cost-effective), core (balanced), or pro (high-quality)',
-    example: GeneratorType.CORE,
-  })
-  @ApiQuery({
-    name: 'match_limit',
-    required: false,
-    type: Number,
-    description: 'Maximum number of matched candidates to return (1-100)',
-    example: 10,
-  })
-  @ApiQuery({
-    name: 'max_wait_seconds',
-    required: false,
-    type: Number,
-    description: 'Maximum time to wait for completion in seconds (10-1800)',
-    example: 900,
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Server-Sent Events stream of FindAll workflow progress',
-    content: {
-      'text/event-stream': {
-        schema: {
-          type: 'string',
-          example:
-            'data: {"type":"connected","data":{"message":"Connected, streaming FindAll run status...","findall_id":"findall_xxx"}}\n\ndata: {"type":"status_update","data":{"findall_id":"findall_xxx","status":{"status":"running"}}}\n\n',
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 400, description: 'Invalid request parameters (missing objective)' })
-  @ApiResponse({ status: 500, description: 'Internal server error during streaming' })
-  streamComplete(
-    @Query('objective') objective: string,
-    @Query('generator') generator?: GeneratorType,
-    @Query('match_limit') matchLimit?: string,
-    @Query('max_wait_seconds') maxWaitSeconds?: string,
-  ): Observable<MessageEvent> {
-    this.logger.log(
-      `[Stream] SSE stream request received - Objective: "${objective.substring(0, 100)}${objective.length > 100 ? '...' : ''}", Generator: ${generator || GeneratorType.CORE}`,
-    );
-    if (!objective) {
-      this.logger.warn('[Stream] SSE stream request rejected: Objective parameter is missing');
-      throw new BadRequestException('Objective parameter is required');
-    }
-    const matchLimitNum = matchLimit ? Number(matchLimit) : 10;
-    const maxWaitSecondsNum = maxWaitSeconds ? Number(maxWaitSeconds) : 900;
-    this.logger.debug(`[Stream] Returning SSE observable for FindAll complete workflow`);
-    return new Observable((observer) => {
-      this.streamingService
-        .streamComplete(
-          objective,
-          generator || GeneratorType.CORE,
-          matchLimitNum,
-          undefined,
-          undefined,
-          undefined,
-          maxWaitSecondsNum,
-          observer,
-        )
-        .catch((error) => {
-          this.logger.error(`[Stream] Error in streamComplete:`, error);
-          observer.error(error);
-        });
-    });
-  }
-
-  @Get('runs/:findallId/stream')
-  @Sse()
-  @ApiOperation({
-    summary: 'Stream FindAll run status progress (Server-Sent Events)',
-    description:
-      'Streams real-time status updates for an existing FindAll run via Server-Sent Events (SSE). ' +
-      'Uses polling to check status and stream updates. Ideal for monitoring existing FindAll runs.',
-  })
-  @ApiParam({
-    name: 'findallId',
-    description: 'The FindAll run ID',
-    example: 'findall_40e0ab8c10754be0b7a16477abb38a2f',
-  })
-  @ApiQuery({
-    name: 'max_wait_seconds',
-    required: false,
-    type: Number,
-    description: 'Maximum time to wait for completion in seconds (10-1800)',
-    example: 900,
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Server-Sent Events stream of FindAll run status progress',
-    content: {
-      'text/event-stream': {
-        schema: {
-          type: 'string',
-          example:
-            'data: {"type":"connected","data":{"message":"Connected, streaming FindAll run status...","findall_id":"findall_xxx"}}\n\ndata: {"type":"status_update","data":{"findall_id":"findall_xxx","status":{"status":"running"}}}\n\n',
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 404, description: 'FindAll run not found' })
-  @ApiResponse({ status: 500, description: 'Internal server error during streaming' })
-  streamRun(
-    @Param('findallId') findallId: string,
-    @Query('max_wait_seconds') maxWaitSeconds?: string,
-  ): Observable<MessageEvent> {
-    this.logger.log(
-      `[Stream] SSE stream request received for run status - findall_id: ${findallId}`,
-    );
-    if (!findallId) {
-      this.logger.warn('[Stream] SSE stream request rejected: findallId parameter is missing');
-      throw new BadRequestException('findallId parameter is required');
-    }
-    const maxWaitSecondsNum = maxWaitSeconds ? Number(maxWaitSeconds) : 900;
-    this.logger.debug(`[Stream] Returning SSE observable for FindAll run status`);
-    return this.streamingService.streamRunObservable(findallId, maxWaitSecondsNum);
   }
 
   @Get('generators')
