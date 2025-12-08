@@ -134,56 +134,6 @@ export class DeepResearchAgentController {
     }
   }
 
-  @Get('research')
-  @ApiOperation({
-    summary: 'Perform deep research (GET)',
-    description:
-      'Performs deep research using query parameters. Same functionality as POST endpoint.',
-  })
-  @ApiQuery({ name: 'query', description: 'Research query', required: true })
-  @ApiQuery({
-    name: 'processor',
-    enum: ProcessorType,
-    required: false,
-    description: 'Processor type: core or pro',
-  })
-  @ApiQuery({
-    name: 'includeAnalysis',
-    required: false,
-    type: Boolean,
-    description: 'Include detailed analysis',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Research completed successfully',
-    type: DeepResearchResponseDto,
-  })
-  async researchGet(
-    @Query('query') query: string,
-    @Query('processor') processor?: ProcessorType,
-    @Query('includeAnalysis') includeAnalysis?: string,
-  ): Promise<DeepResearchResponseDto> {
-    this.logger.log(
-      `[Research] GET request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || 'core'}`,
-    );
-
-    try {
-      const result = await this.deepResearchAgentService.research(
-        query,
-        processor,
-        includeAnalysis
-          ? includeAnalysis === 'true' || includeAnalysis === '1'
-          : undefined,
-      );
-
-      this.logger.log(`[Research] GET request completed successfully`);
-      return result;
-    } catch (error) {
-      this.logger.error(`[Research] GET request failed:`, error);
-      throw error;
-    }
-  }
-
   @Get('research/stream')
   @Sse()
   @ApiOperation({
@@ -286,7 +236,7 @@ export class DeepResearchAgentController {
           description:
             'Balanced processor. Provides comprehensive research with good depth and quality.',
           latency: '30-120 seconds',
-          cost: '$20 per 1,000 runs',
+          cost: '$25 per 1,000 runs',
           useCase: 'Comprehensive research, balanced depth',
         },
         {
@@ -294,7 +244,7 @@ export class DeepResearchAgentController {
           description:
             'High-quality processor. Provides thorough research with maximum analysis and depth.',
           latency: '60-180 seconds',
-          cost: '$50 per 1,000 runs',
+          cost: '$100 per 1,000 runs',
           useCase: 'Thorough research, high-quality analysis',
         },
       ],

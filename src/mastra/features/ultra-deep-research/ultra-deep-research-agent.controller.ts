@@ -137,54 +137,6 @@ export class UltraDeepResearchAgentController {
     }
   }
 
-  @Get('research')
-  @ApiOperation({
-    summary: 'Perform ultra deep research (GET)',
-    description:
-      'Performs ultra deep research using query parameters. Same functionality as POST endpoint.',
-  })
-  @ApiQuery({ name: 'query', description: 'Research query', required: true })
-  @ApiQuery({
-    name: 'processor',
-    enum: ProcessorType,
-    required: false,
-    description: 'Processor type: pro, ultra, ultra2x, ultra4x, or ultra8x',
-  })
-  @ApiQuery({
-    name: 'includeAnalysis',
-    required: false,
-    type: Boolean,
-    description: 'Include detailed analysis',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Research completed successfully',
-    type: UltraDeepResearchResponseDto,
-  })
-  async researchGet(
-    @Query('query') query: string,
-    @Query('processor') processor?: ProcessorType,
-    @Query('includeAnalysis') includeAnalysis?: string,
-  ): Promise<UltraDeepResearchResponseDto> {
-    this.logger.log(
-      `[Research] GET request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || 'pro'}`,
-    );
-    try {
-      const result = await this.ultraDeepResearchAgentService.research(
-        query,
-        processor,
-        includeAnalysis
-          ? includeAnalysis === 'true' || includeAnalysis === '1'
-          : undefined,
-      );
-      this.logger.log(`[Research] GET request completed successfully`);
-      return result;
-    } catch (error) {
-      this.logger.error(`[Research] GET request failed:`, error);
-      throw error;
-    }
-  }
-
   @Get('research/stream')
   @Sse()
   @ApiOperation({
@@ -288,7 +240,7 @@ export class UltraDeepResearchAgentController {
           description:
             'High-quality processor. Provides thorough research with maximum analysis and depth.',
           latency: '60-180 seconds',
-          cost: '$50 per 1,000 runs',
+          cost: '$100 per 1,000 runs',
           useCase: 'Thorough research, high-quality analysis',
         },
         {
@@ -296,7 +248,7 @@ export class UltraDeepResearchAgentController {
           description:
             'Ultra processor. Provides maximum depth and quality for exhaustive research.',
           latency: '120-300 seconds',
-          cost: '$100 per 1,000 runs',
+          cost: '$300 per 1,000 runs',
           useCase: 'Ultra-comprehensive research, maximum depth',
         },
         {
@@ -304,7 +256,7 @@ export class UltraDeepResearchAgentController {
           description:
             'Ultra 2x processor. Provides even greater depth and analytical sophistication.',
           latency: '180-450 seconds',
-          cost: '$200 per 1,000 runs',
+          cost: '$600 per 1,000 runs',
           useCase: 'Exhaustive research, maximum analytical depth',
         },
         {
@@ -312,7 +264,7 @@ export class UltraDeepResearchAgentController {
           description:
             'Ultra 4x processor. Provides the highest level of research depth and quality.',
           latency: '300-600 seconds',
-          cost: '$400 per 1,000 runs',
+          cost: '$1200 per 1,000 runs',
           useCase: 'Most exhaustive research, highest quality',
         },
         {
@@ -320,7 +272,7 @@ export class UltraDeepResearchAgentController {
           description:
             'Ultra 8x processor. Provides the absolute maximum research depth and analytical sophistication.',
           latency: '600-1200 seconds',
-          cost: '$800 per 1,000 runs',
+          cost: '$2400 per 1,000 runs',
           useCase: 'Absolute maximum research depth, ultimate quality',
         },
       ],

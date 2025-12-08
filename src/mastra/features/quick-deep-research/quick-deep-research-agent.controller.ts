@@ -132,54 +132,6 @@ export class QuickDeepResearchAgentController {
     }
   }
 
-  @Get('research')
-  @ApiOperation({
-    summary: 'Perform quick deep research (GET)',
-    description:
-      'Performs quick deep research using query parameters. Same functionality as POST endpoint.',
-  })
-  @ApiQuery({ name: 'query', description: 'Research query', required: true })
-  @ApiQuery({
-    name: 'processor',
-    enum: ProcessorType,
-    required: false,
-    description: 'Processor type: base or core',
-  })
-  @ApiQuery({
-    name: 'includeAnalysis',
-    required: false,
-    type: Boolean,
-    description: 'Include detailed analysis',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Research completed successfully',
-    type: QuickDeepResearchResponseDto,
-  })
-  async researchGet(
-    @Query('query') query: string,
-    @Query('processor') processor?: ProcessorType,
-    @Query('includeAnalysis') includeAnalysis?: string,
-  ): Promise<QuickDeepResearchResponseDto> {
-    this.logger.log(
-      `[Research] GET request received - Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}", Processor: ${processor || 'base'}`,
-    );
-    try {
-      const result = await this.quickDeepResearchAgentService.research(
-        query,
-        processor,
-        includeAnalysis
-          ? includeAnalysis === 'true' || includeAnalysis === '1'
-          : undefined,
-      );
-      this.logger.log(`[Research] GET request completed successfully`);
-      return result;
-    } catch (error) {
-      this.logger.error(`[Research] GET request failed:`, error);
-      throw error;
-    }
-  }
-
   @Get('research/stream')
   @Sse()
   @ApiOperation({
@@ -289,7 +241,7 @@ export class QuickDeepResearchAgentController {
           description:
             'More comprehensive processor. Provides deeper analysis and more thorough research.',
           latency: '30-120 seconds',
-          cost: '$20 per 1,000 runs',
+          cost: '$25 per 1,000 runs',
           useCase: 'Comprehensive research, deeper analysis',
         },
       ],

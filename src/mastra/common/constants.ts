@@ -14,7 +14,9 @@ export const PARALLEL_BETA_HEADERS = {
 } as const;
 
 export const STREAMING_CONFIG = {
-  DEFAULT_TIMEOUT_MS: 600000, // 10 minutes
+  DEFAULT_TIMEOUT_MS: 18000000, // 5 hours - covers ultra processors that can take up to 4.8 hours
+  ULTRA_PROCESSOR_TIMEOUT_MS: 18000000, // 5 hours for ultra/ultra2x/ultra4x/ultra8x
+  STANDARD_PROCESSOR_TIMEOUT_MS: 3600000, // 1 hour for base/core/pro processors
   POLLING_INTERVAL_MS: 2000, // 2 seconds for FindAll
   MAX_FINDALL_WAIT_SECONDS: 900, // 15 minutes
 } as const;
