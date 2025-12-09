@@ -19,11 +19,17 @@ export class FindAllAgentService extends BaseResearchAgentService {
   async ingest(objective: string): Promise<any> {
     const runtimeContext = this.createRuntimeContext();
 
-    return await findAllIngestTool.execute({
-      context: { objective },
-      mastra: this.getMastra(),
-      runtimeContext,
-    });
+    if (!findAllIngestTool) {
+      throw new Error('findAllIngestTool is not available');
+    }
+
+    return await findAllIngestTool.execute(
+      { objective },
+      {
+        mastra: this.getMastra(),
+        runtimeContext,
+      },
+    );
   }
 
   async createRun(
@@ -54,8 +60,11 @@ export class FindAllAgentService extends BaseResearchAgentService {
       toolInput.enrichments = enrichments;
     }
 
-    return await findAllRunTool.execute({
-      context: toolInput,
+    if (!findAllRunTool) {
+      throw new Error('findAllRunTool is not available');
+    }
+
+    return await findAllRunTool.execute(toolInput, {
       mastra: this.getMastra(),
       runtimeContext,
     });
@@ -64,11 +73,17 @@ export class FindAllAgentService extends BaseResearchAgentService {
   async getStatus(findallId: string): Promise<any> {
     const runtimeContext = this.createRuntimeContext();
 
-    return await findAllStatusTool.execute({
-      context: { findall_id: findallId },
-      mastra: this.getMastra(),
-      runtimeContext,
-    });
+    if (!findAllStatusTool) {
+      throw new Error('findAllStatusTool is not available');
+    }
+
+    return await findAllStatusTool.execute(
+      { findall_id: findallId },
+      {
+        mastra: this.getMastra(),
+        runtimeContext,
+      },
+    );
   }
 
   async getResults(
@@ -78,15 +93,22 @@ export class FindAllAgentService extends BaseResearchAgentService {
   ): Promise<any> {
     const runtimeContext = this.createRuntimeContext();
 
-    return await findAllResultsTool.execute({
-      context: {
+    if (!findAllResultsTool) {
+      throw new Error('findAllResultsTool is not available');
+    }
+
+    return await findAllResultsTool.execute(
+      {
         findall_id: findallId,
-        wait_for_completion: waitForCompletion !== undefined ? waitForCompletion : true,
+        wait_for_completion:
+          waitForCompletion !== undefined ? waitForCompletion : true,
         max_wait_seconds: maxWaitSeconds || 900,
       },
-      mastra: this.getMastra(),
-      runtimeContext,
-    });
+      {
+        mastra: this.getMastra(),
+        runtimeContext,
+      },
+    );
   }
 
   async complete(
@@ -98,17 +120,22 @@ export class FindAllAgentService extends BaseResearchAgentService {
   ): Promise<any> {
     const runtimeContext = this.createRuntimeContext();
 
-    return await findAllCompleteTool.execute({
-      context: {
+    if (!findAllCompleteTool) {
+      throw new Error('findAllCompleteTool is not available');
+    }
+
+    return await findAllCompleteTool.execute(
+      {
         objective,
         generator: generator || 'core',
         match_limit: matchLimit || 10,
         enrichments: enrichments || [],
         max_wait_seconds: maxWaitSeconds || 900,
       },
-      mastra: this.getMastra(),
-      runtimeContext,
-    });
+      {
+        mastra: this.getMastra(),
+        runtimeContext,
+      },
+    );
   }
 }
-

@@ -21,8 +21,7 @@ export class DeepResearchAgentService extends BaseResearchAgentService {
 
     const runtimeContext = this.createRuntimeContext();
 
-    return await deepResearchTool.execute({
-      context: toolInput,
+    return await deepResearchTool?.execute(toolInput, {
       mastra: this.getMastra(),
       runtimeContext,
     });

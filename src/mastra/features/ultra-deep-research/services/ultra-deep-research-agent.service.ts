@@ -21,8 +21,7 @@ export class UltraDeepResearchAgentService extends BaseResearchAgentService {
 
     const runtimeContext = this.createRuntimeContext();
 
-    return await ultraDeepResearchTool.execute({
-      context: toolInput,
+    return await ultraDeepResearchTool?.execute(toolInput, {
       mastra: this.getMastra(),
       runtimeContext,
     });

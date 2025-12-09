@@ -26,8 +26,7 @@ export class WebSearchAgentService extends BaseResearchAgentService {
 
     const runtimeContext = this.createRuntimeContext();
 
-    return await webSearchTool.execute({
-      context: toolInput,
+    return await webSearchTool?.execute(toolInput, {
       mastra: this.getMastra(),
       runtimeContext,
     });

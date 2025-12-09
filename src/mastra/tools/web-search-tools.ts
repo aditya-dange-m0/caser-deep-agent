@@ -147,7 +147,8 @@ export const webSearchTool = createTool({
       summary: z.any(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('webSearch: Starting execution');
 
@@ -173,7 +174,9 @@ export const webSearchTool = createTool({
       });
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return formatError('Search query is required and must be a non-empty string');
+        return formatError(
+          'Search query is required and must be a non-empty string',
+        );
       }
 
       // Initialize Parallel client
@@ -298,7 +301,7 @@ Provide ${maxResults} results total.`;
         };
 
         return {
-          success: true,
+          success: true as const,
           results: results,
           summary: summary,
         };
@@ -306,7 +309,7 @@ Provide ${maxResults} results total.`;
 
       console.log('webSearch: No results found');
       return {
-        success: true,
+        success: true as const,
         results: [],
         summary: {
           totalResults: 0,
@@ -371,7 +374,8 @@ export const advancedWebSearchTool = createTool({
       summary: z.any(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('advancedWebSearch: Starting execution');
 
@@ -389,7 +393,9 @@ export const advancedWebSearchTool = createTool({
         typeof mainQuery !== 'string' ||
         mainQuery.trim().length === 0
       ) {
-        return formatError('Main search query is required and must be a non-empty string');
+        return formatError(
+          'Main search query is required and must be a non-empty string',
+        );
       }
 
       // Initialize Parallel client
@@ -514,7 +520,7 @@ Provide ${maxResultsPerQuery} results total.`;
         : [];
 
       return {
-        success: true,
+        success: true as const,
         results: combineResults ? allResults : undefined,
         queryResults: combineResults ? undefined : queryResults,
         summary: {
@@ -561,7 +567,8 @@ export const analyzeSearchResultsTool = createTool({
       trends: z.any(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('analyzeSearchResults: Starting execution');
 
@@ -597,7 +604,7 @@ export const analyzeSearchResultsTool = createTool({
       ];
 
       if (focusAreas.length > 0) {
-        focusAreas.forEach((area) => {
+        focusAreas.forEach((area: string) => {
           const relevantResults = results.filter(
             (r: any) =>
               r.title?.toLowerCase().includes(area.toLowerCase()) ||
@@ -646,7 +653,7 @@ export const analyzeSearchResultsTool = createTool({
         : null;
 
       return {
-        success: true,
+        success: true as const,
         analysis: analysis,
         keyInsights: keyInsights,
         trends: trends,

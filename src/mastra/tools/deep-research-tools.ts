@@ -134,14 +134,17 @@ export const quickDeepResearchTool = createTool({
       summary: z.any(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('quickDeepResearch: Starting execution');
 
       const { query, processor = 'base', includeAnalysis = true } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return formatError('Research query is required and must be a non-empty string');
+        return formatError(
+          'Research query is required and must be a non-empty string',
+        );
       }
 
       let client: Parallel;
@@ -219,14 +222,14 @@ Deliver a well-structured research report that covers all aspects of the topic.`
         };
 
         return {
-          success: true,
+          success: true as const,
           research: outputText,
           summary: summary,
         };
       }
 
       return {
-        success: true,
+        success: true as const,
         research: 'No research results found.',
         summary: {
           query: query,
@@ -281,14 +284,17 @@ export const deepResearchTool = createTool({
       summary: z.any(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('deepResearch: Starting execution');
 
       const { query, processor = 'core', includeAnalysis = true } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return formatError('Research query is required and must be a non-empty string');
+        return formatError(
+          'Research query is required and must be a non-empty string',
+        );
       }
 
       let client: Parallel;
@@ -370,14 +376,14 @@ Deliver a comprehensive, well-structured research report that thoroughly covers 
         };
 
         return {
-          success: true,
+          success: true as const,
           research: outputText,
           summary: summary,
         };
       }
 
       return {
-        success: true,
+        success: true as const,
         research: 'No research results found.',
         summary: {
           query: query,
@@ -434,14 +440,17 @@ export const ultraDeepResearchTool = createTool({
       summary: z.any(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('ultraDeepResearch: Starting execution');
 
       const { query, processor = 'pro', includeAnalysis = true } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return formatError('Research query is required and must be a non-empty string');
+        return formatError(
+          'Research query is required and must be a non-empty string',
+        );
       }
 
       let client: Parallel;
@@ -530,14 +539,14 @@ Deliver an ultra-comprehensive, meticulously structured research report that exh
         };
 
         return {
-          success: true,
+          success: true as const,
           research: outputText,
           summary: summary,
         };
       }
 
       return {
-        success: true,
+        success: true as const,
         research: 'No research results found.',
         summary: {
           query: query,

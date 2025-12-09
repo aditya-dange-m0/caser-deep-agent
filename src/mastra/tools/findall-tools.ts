@@ -64,7 +64,7 @@ const pollFindAllStatus = async (
   interval: number = 1000, // 1 second
 ): Promise<any> => {
   let lastStatus: any = null;
-  
+
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const status = await makeRequest(`/runs/${findallId}`);
@@ -146,14 +146,21 @@ export const findAllIngestTool = createTool({
       match_conditions: z.array(z.any()),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('findAllIngest: Starting execution');
 
       const { objective } = context;
 
-      if (!objective || typeof objective !== 'string' || objective.trim().length === 0) {
-        return formatError('Objective is required and must be a non-empty string');
+      if (
+        !objective ||
+        typeof objective !== 'string' ||
+        objective.trim().length === 0
+      ) {
+        return formatError(
+          'Objective is required and must be a non-empty string',
+        );
       }
 
       console.log('findAllIngest: Making ingest request', { objective });
@@ -166,7 +173,7 @@ export const findAllIngestTool = createTool({
       });
 
       return {
-        success: true,
+        success: true as const,
         objective: result.objective,
         entity_type: result.entity_type,
         match_conditions: result.match_conditions || [],
@@ -242,7 +249,8 @@ export const findAllRunTool = createTool({
       findall_id: z.string(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('findAllRun: Starting execution');
 
@@ -255,20 +263,32 @@ export const findAllRunTool = createTool({
         enrichments,
       } = context;
 
-      if (!objective || typeof objective !== 'string' || objective.trim().length === 0) {
-        return formatError('Objective is required and must be a non-empty string');
+      if (
+        !objective ||
+        typeof objective !== 'string' ||
+        objective.trim().length === 0
+      ) {
+        return formatError(
+          'Objective is required and must be a non-empty string',
+        );
       }
 
       // If entity_type or match_conditions are not provided, use ingest to get them
       let finalEntityType = entity_type;
       let finalMatchConditions = match_conditions;
 
-      if (!finalEntityType || !finalMatchConditions || finalMatchConditions.length === 0) {
+      if (
+        !finalEntityType ||
+        !finalMatchConditions ||
+        finalMatchConditions.length === 0
+      ) {
         console.log(
           'findAllRun: Entity type or match conditions missing, calling ingest first',
         );
         try {
-          const ingestResult = await makeRequest('/ingest', 'POST', { objective });
+          const ingestResult = await makeRequest('/ingest', 'POST', {
+            objective,
+          });
           finalEntityType = finalEntityType || ingestResult.entity_type;
           finalMatchConditions =
             finalMatchConditions || ingestResult.match_conditions || [];
@@ -312,10 +332,12 @@ export const findAllRunTool = createTool({
         throw new Error('Failed to create FindAll run: No findall_id returned');
       }
 
-      console.log('findAllRun: FindAll run created', { findall_id: result.findall_id });
+      console.log('findAllRun: FindAll run created', {
+        findall_id: result.findall_id,
+      });
 
       return {
-        success: true,
+        success: true as const,
         findall_id: result.findall_id,
       };
     } catch (err) {
@@ -350,14 +372,21 @@ export const findAllStatusTool = createTool({
       metrics: z.any().optional(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('findAllStatus: Starting execution');
 
       const { findall_id } = context;
 
-      if (!findall_id || typeof findall_id !== 'string' || findall_id.trim().length === 0) {
-        return formatError('findall_id is required and must be a non-empty string');
+      if (
+        !findall_id ||
+        typeof findall_id !== 'string' ||
+        findall_id.trim().length === 0
+      ) {
+        return formatError(
+          'findall_id is required and must be a non-empty string',
+        );
       }
 
       console.log('findAllStatus: Checking status', { findall_id });
@@ -370,7 +399,7 @@ export const findAllStatusTool = createTool({
       });
 
       return {
-        success: true,
+        success: true as const,
         findall_id: result.findall_id || findall_id,
         status: result.status,
         metrics: result.status?.metrics,
@@ -407,7 +436,9 @@ export const findAllResultsTool = createTool({
       .number()
       .optional()
       .default(900)
-      .describe('Maximum time to wait for completion in seconds (default: 900 = 15 minutes)'),
+      .describe(
+        'Maximum time to wait for completion in seconds (default: 900 = 15 minutes)',
+      ),
   }),
   // Output can be a string (error) or object (success) to reduce context pollution
   outputSchema: z.union([
@@ -420,7 +451,8 @@ export const findAllResultsTool = createTool({
       metrics: z.any().optional(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('findAllResults: Starting execution');
 
@@ -430,8 +462,14 @@ export const findAllResultsTool = createTool({
         max_wait_seconds = 300,
       } = context;
 
-      if (!findall_id || typeof findall_id !== 'string' || findall_id.trim().length === 0) {
-        return formatError('findall_id is required and must be a non-empty string');
+      if (
+        !findall_id ||
+        typeof findall_id !== 'string' ||
+        findall_id.trim().length === 0
+      ) {
+        return formatError(
+          'findall_id is required and must be a non-empty string',
+        );
       }
 
       // If waiting for completion, poll for status first
@@ -463,7 +501,7 @@ export const findAllResultsTool = createTool({
       });
 
       return {
-        success: true,
+        success: true as const,
         findall_id: result.findall_id || findall_id,
         status: result.status,
         candidates: result.candidates || [],
@@ -516,7 +554,9 @@ export const findAllCompleteTool = createTool({
       .number()
       .optional()
       .default(900)
-      .describe('Maximum time to wait for completion in seconds (default: 900 = 15 minutes)'),
+      .describe(
+        'Maximum time to wait for completion in seconds (default: 900 = 15 minutes)',
+      ),
   }),
   // Output can be a string (error) or object (success) to reduce context pollution
   outputSchema: z.union([
@@ -529,7 +569,8 @@ export const findAllCompleteTool = createTool({
       metrics: z.any().optional(),
     }),
   ]),
-  execute: async ({ context, mastra }) => {
+  execute: async (context: any, options?) => {
+    const mastra = options?.mastra;
     try {
       console.log('findAllComplete: Starting complete workflow');
 
@@ -541,8 +582,14 @@ export const findAllCompleteTool = createTool({
         max_wait_seconds = 300,
       } = context;
 
-      if (!objective || typeof objective !== 'string' || objective.trim().length === 0) {
-        return formatError('Objective is required and must be a non-empty string');
+      if (
+        !objective ||
+        typeof objective !== 'string' ||
+        objective.trim().length === 0
+      ) {
+        return formatError(
+          'Objective is required and must be a non-empty string',
+        );
       }
 
       // Step 1: Ingest to get schema
@@ -552,7 +599,9 @@ export const findAllCompleteTool = createTool({
         ingestResult = await makeRequest('/ingest', 'POST', { objective });
       } catch (ingestError) {
         const errorMsg =
-          ingestError instanceof Error ? ingestError.message : String(ingestError);
+          ingestError instanceof Error
+            ? ingestError.message
+            : String(ingestError);
         return formatError('Ingest failed', errorMsg);
       }
 
@@ -568,7 +617,10 @@ export const findAllCompleteTool = createTool({
         runRequestBody.entity_type = ingestResult.entity_type;
       }
 
-      if (ingestResult.match_conditions && ingestResult.match_conditions.length > 0) {
+      if (
+        ingestResult.match_conditions &&
+        ingestResult.match_conditions.length > 0
+      ) {
         runRequestBody.match_conditions = ingestResult.match_conditions;
       }
 
@@ -577,7 +629,7 @@ export const findAllCompleteTool = createTool({
       }
 
       let runResult;
-      
+
       try {
         runResult = await makeRequest('/runs', 'POST', runRequestBody);
       } catch (runError) {
@@ -587,7 +639,9 @@ export const findAllCompleteTool = createTool({
       }
 
       if (!runResult.findall_id) {
-        return formatError('Failed to create FindAll run: No findall_id returned');
+        return formatError(
+          'Failed to create FindAll run: No findall_id returned',
+        );
       }
 
       const findallId: string = runResult.findall_id;
@@ -618,7 +672,7 @@ export const findAllCompleteTool = createTool({
       });
 
       return {
-        success: true,
+        success: true as const,
         findall_id: result.findall_id || findallId,
         status: result.status,
         candidates: result.candidates || [],
@@ -626,18 +680,22 @@ export const findAllCompleteTool = createTool({
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      
+
       // If the error is about timeout but we have a findall_id, try to fetch results anyway
       // Extract findall_id from error message as fallback
       let findallIdToTry: string | null = null;
-      
+
       // Try to extract findall_id from error message
       const findallIdMatch = errorMessage.match(/findall_[a-f0-9]+/i);
       if (findallIdMatch) {
         findallIdToTry = findallIdMatch[0];
       }
-      
-      if ((errorMessage.includes('timeout') || errorMessage.includes('Maximum attempts')) && findallIdToTry) {
+
+      if (
+        (errorMessage.includes('timeout') ||
+          errorMessage.includes('Maximum attempts')) &&
+        findallIdToTry
+      ) {
         console.warn(
           `Timeout occurred, but attempting to fetch partial results for ${findallIdToTry}`,
         );
@@ -648,7 +706,7 @@ export const findAllCompleteTool = createTool({
               `Successfully retrieved ${result.candidates.length} candidates despite timeout`,
             );
             return {
-              success: true,
+              success: true as const,
               findall_id: result.findall_id || findallIdToTry,
               status: result.status,
               candidates: result.candidates || [],
@@ -672,4 +730,3 @@ export const findAllCompleteTool = createTool({
     }
   },
 });
-
