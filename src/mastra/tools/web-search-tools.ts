@@ -425,8 +425,8 @@ export const advancedWebSearchTool = createTool({
       const allQueries = [mainQuery, ...relatedQueries];
       const queryResults: Record<string, any[]> = {};
 
-      // Execute searches for all queries using Task API
-      for (const query of allQueries) {
+      // Helper function to process a single query asynchronously
+      const processQuery = async (query: string): Promise<void> => {
         try {
           console.log(
             `advancedWebSearch: Creating task for query "${query}" with processor ${processor}`,
@@ -456,7 +456,7 @@ Provide ${maxResultsPerQuery} results total.`;
               errorMsg,
             );
             queryResults[query] = [];
-            continue;
+            return;
           }
 
           const runId = taskRun.run_id;
@@ -465,7 +465,7 @@ Provide ${maxResultsPerQuery} results total.`;
               `advancedWebSearch: Failed to create task for query "${query}" - no run ID`,
             );
             queryResults[query] = [];
-            continue;
+            return;
           }
 
           // Poll for results using Parallel SDK
@@ -480,7 +480,7 @@ Provide ${maxResultsPerQuery} results total.`;
               errorMsg,
             );
             queryResults[query] = [];
-            continue;
+            return;
           }
 
           if (result.output) {
@@ -527,6 +527,16 @@ Provide ${maxResultsPerQuery} results total.`;
           );
           queryResults[query] = [];
         }
+      };
+
+      // Process queries in parallel with concurrency limit to avoid rate limiting
+      // Limit to 3 concurrent requests to be safe with API rate limits
+      const CONCURRENCY_LIMIT = 3;
+
+      for (let i = 0; i < allQueries.length; i += CONCURRENCY_LIMIT) {
+        const batch = allQueries.slice(i, i + CONCURRENCY_LIMIT);
+        const batchPromises = batch.map((query) => processQuery(query));
+        await Promise.all(batchPromises);
       }
 
       const allResults = combineResults
