@@ -7,6 +7,15 @@ config();
 
 const PARALLEL_API_KEY = process.env.PARALLEL_API_KEY;
 
+// Helper function to format error messages as simple strings (not JSON)
+// This reduces context pollution by returning plain text for errors
+const formatError = (message: string, context?: string): string => {
+  if (context) {
+    return `${message}: ${context}`;
+  }
+  return message;
+};
+
 // Initialize Parallel AI client
 const getParallelClient = () => {
   if (!PARALLEL_API_KEY) {
@@ -116,12 +125,15 @@ export const quickDeepResearchTool = createTool({
         'Include detailed analysis and insights in the research output',
       ),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    research: z.any().optional(),
-    summary: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      research: z.any(),
+      summary: z.any(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('quickDeepResearch: Starting execution');
@@ -129,10 +141,7 @@ export const quickDeepResearchTool = createTool({
       const { query, processor = 'base', includeAnalysis = true } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Research query is required and must be a non-empty string',
-        };
+        return formatError('Research query is required and must be a non-empty string');
       }
 
       let client: Parallel;
@@ -141,10 +150,7 @@ export const quickDeepResearchTool = createTool({
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         mastra?.getLogger()?.error(errorMsg);
-        return {
-          success: false,
-          error: errorMsg,
-        };
+        return formatError('Failed to initialize Parallel client', errorMsg);
       }
 
       const taskInput = `Perform a comprehensive deep research on: ${query}. 
@@ -172,10 +178,7 @@ Deliver a well-structured research report that covers all aspects of the topic.`
         mastra
           ?.getLogger()
           ?.error('Failed to create task', { error: errorMsg });
-        return {
-          success: false,
-          error: `Failed to create task: ${errorMsg}`,
-        };
+        return formatError('Failed to create task', errorMsg);
       }
 
       const runId = taskRun.run_id;
@@ -193,10 +196,7 @@ Deliver a well-structured research report that covers all aspects of the topic.`
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error('quickDeepResearch: Failed to get task result', errorMsg);
-        return {
-          success: false,
-          error: `Failed to get task result: ${errorMsg}`,
-        };
+        return formatError('Failed to get task result', errorMsg);
       }
 
       if (result?.output) {
@@ -243,10 +243,7 @@ Deliver a well-structured research report that covers all aspects of the topic.`
         error: errorMessage,
         query: context.query,
       });
-      return {
-        success: false,
-        error: `Quick deep research failed: ${errorMessage}`,
-      };
+      return formatError('Quick deep research failed', errorMessage);
     }
   },
 });
@@ -275,12 +272,15 @@ export const deepResearchTool = createTool({
         'Include detailed analysis and insights in the research output',
       ),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    research: z.any().optional(),
-    summary: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      research: z.any(),
+      summary: z.any(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('deepResearch: Starting execution');
@@ -288,10 +288,7 @@ export const deepResearchTool = createTool({
       const { query, processor = 'core', includeAnalysis = true } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Research query is required and must be a non-empty string',
-        };
+        return formatError('Research query is required and must be a non-empty string');
       }
 
       let client: Parallel;
@@ -300,10 +297,7 @@ export const deepResearchTool = createTool({
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         mastra?.getLogger()?.error(errorMsg);
-        return {
-          success: false,
-          error: errorMsg,
-        };
+        return formatError('Failed to initialize Parallel client', errorMsg);
       }
 
       const taskInput = `Perform an extensive and comprehensive deep research on: ${query}. 
@@ -333,10 +327,7 @@ Deliver a comprehensive, well-structured research report that thoroughly covers 
         mastra
           ?.getLogger()
           ?.error('Failed to create task', { error: errorMsg });
-        return {
-          success: false,
-          error: `Failed to create task: ${errorMsg}`,
-        };
+        return formatError('Failed to create task', errorMsg);
       }
 
       const runId = taskRun.run_id;
@@ -356,10 +347,7 @@ Deliver a comprehensive, well-structured research report that thoroughly covers 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error('deepResearch: Failed to get task result', errorMsg);
-        return {
-          success: false,
-          error: `Failed to get task result: ${errorMsg}`,
-        };
+        return formatError('Failed to get task result', errorMsg);
       }
 
       if (result?.output) {
@@ -406,10 +394,7 @@ Deliver a comprehensive, well-structured research report that thoroughly covers 
         error: errorMessage,
         query: context.query,
       });
-      return {
-        success: false,
-        error: `Deep research failed: ${errorMessage}`,
-      };
+      return formatError('Deep research failed', errorMessage);
     }
   },
 });
@@ -440,12 +425,15 @@ export const ultraDeepResearchTool = createTool({
         'Include detailed analysis and insights in the research output',
       ),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    research: z.any().optional(),
-    summary: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      research: z.any(),
+      summary: z.any(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('ultraDeepResearch: Starting execution');
@@ -453,10 +441,7 @@ export const ultraDeepResearchTool = createTool({
       const { query, processor = 'pro', includeAnalysis = true } = context;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Research query is required and must be a non-empty string',
-        };
+        return formatError('Research query is required and must be a non-empty string');
       }
 
       let client: Parallel;
@@ -465,10 +450,7 @@ export const ultraDeepResearchTool = createTool({
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         mastra?.getLogger()?.error(errorMsg);
-        return {
-          success: false,
-          error: errorMsg,
-        };
+        return formatError('Failed to initialize Parallel client', errorMsg);
       }
 
       const taskInput = `Perform an ultra-comprehensive, exhaustive deep research on: ${query}. 
@@ -500,10 +482,7 @@ Deliver an ultra-comprehensive, meticulously structured research report that exh
         mastra
           ?.getLogger()
           ?.error('Failed to create task', { error: errorMsg });
-        return {
-          success: false,
-          error: `Failed to create task: ${errorMsg}`,
-        };
+        return formatError('Failed to create task', errorMsg);
       }
 
       const runId = taskRun.run_id;
@@ -528,10 +507,7 @@ Deliver an ultra-comprehensive, meticulously structured research report that exh
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error('ultraDeepResearch: Failed to get task result', errorMsg);
-        return {
-          success: false,
-          error: `Failed to get task result: ${errorMsg}`,
-        };
+        return formatError('Failed to get task result', errorMsg);
       }
 
       if (result?.output) {
@@ -578,10 +554,7 @@ Deliver an ultra-comprehensive, meticulously structured research report that exh
         error: errorMessage,
         query: context.query,
       });
-      return {
-        success: false,
-        error: `Ultra deep research failed: ${errorMessage}`,
-      };
+      return formatError('Ultra deep research failed', errorMessage);
     }
   },
 });

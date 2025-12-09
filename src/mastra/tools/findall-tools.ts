@@ -8,6 +8,15 @@ const PARALLEL_API_KEY = process.env.PARALLEL_API_KEY;
 const PARALLEL_BETA_HEADER = 'findall-2025-09-15';
 const PARALLEL_API_BASE = 'https://api.parallel.ai/v1beta/findall';
 
+// Helper function to format error messages as simple strings (not JSON)
+// This reduces context pollution by returning plain text for errors
+const formatError = (message: string, context?: string): string => {
+  if (context) {
+    return `${message}: ${context}`;
+  }
+  return message;
+};
+
 // Helper function to make API requests
 const makeRequest = async (
   endpoint: string,
@@ -127,13 +136,16 @@ export const findAllIngestTool = createTool({
         'Natural language query describing what entities to find (e.g., "FindAll portfolio companies of Khosla Ventures founded after 2020")',
       ),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    objective: z.string().optional(),
-    entity_type: z.string().optional(),
-    match_conditions: z.array(z.any()).optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      objective: z.string(),
+      entity_type: z.string(),
+      match_conditions: z.array(z.any()),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('findAllIngest: Starting execution');
@@ -141,10 +153,7 @@ export const findAllIngestTool = createTool({
       const { objective } = context;
 
       if (!objective || typeof objective !== 'string' || objective.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Objective is required and must be a non-empty string',
-        };
+        return formatError('Objective is required and must be a non-empty string');
       }
 
       console.log('findAllIngest: Making ingest request', { objective });
@@ -171,10 +180,7 @@ export const findAllIngestTool = createTool({
         objective: context.objective,
       });
 
-      return {
-        success: false,
-        error: `FindAll ingest failed: ${errorMessage}`,
-      };
+      return formatError('FindAll ingest failed', errorMessage);
     }
   },
 });
@@ -228,11 +234,14 @@ export const findAllRunTool = createTool({
         'Optional array of enrichment fields to extract for matched candidates',
       ),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    findall_id: z.string().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      findall_id: z.string(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('findAllRun: Starting execution');
@@ -247,10 +256,7 @@ export const findAllRunTool = createTool({
       } = context;
 
       if (!objective || typeof objective !== 'string' || objective.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Objective is required and must be a non-empty string',
-        };
+        return formatError('Objective is required and must be a non-empty string');
       }
 
       // If entity_type or match_conditions are not provided, use ingest to get them
@@ -321,10 +327,7 @@ export const findAllRunTool = createTool({
         objective: context.objective,
       });
 
-      return {
-        success: false,
-        error: `FindAll run creation failed: ${errorMessage}`,
-      };
+      return formatError('FindAll run creation failed', errorMessage);
     }
   },
 });
@@ -337,13 +340,16 @@ export const findAllStatusTool = createTool({
   inputSchema: z.object({
     findall_id: z.string().describe('The FindAll run ID to check status for'),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    findall_id: z.string().optional(),
-    status: z.any().optional(),
-    metrics: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      findall_id: z.string(),
+      status: z.any(),
+      metrics: z.any().optional(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('findAllStatus: Starting execution');
@@ -351,10 +357,7 @@ export const findAllStatusTool = createTool({
       const { findall_id } = context;
 
       if (!findall_id || typeof findall_id !== 'string' || findall_id.trim().length === 0) {
-        return {
-          success: false,
-          error: 'findall_id is required and must be a non-empty string',
-        };
+        return formatError('findall_id is required and must be a non-empty string');
       }
 
       console.log('findAllStatus: Checking status', { findall_id });
@@ -381,10 +384,7 @@ export const findAllStatusTool = createTool({
         findall_id: context.findall_id,
       });
 
-      return {
-        success: false,
-        error: `FindAll status check failed: ${errorMessage}`,
-      };
+      return formatError('FindAll status check failed', errorMessage);
     }
   },
 });
@@ -409,14 +409,17 @@ export const findAllResultsTool = createTool({
       .default(900)
       .describe('Maximum time to wait for completion in seconds (default: 900 = 15 minutes)'),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    findall_id: z.string().optional(),
-    status: z.any().optional(),
-    candidates: z.array(z.any()).optional(),
-    metrics: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      findall_id: z.string(),
+      status: z.any(),
+      candidates: z.array(z.any()),
+      metrics: z.any().optional(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('findAllResults: Starting execution');
@@ -428,10 +431,7 @@ export const findAllResultsTool = createTool({
       } = context;
 
       if (!findall_id || typeof findall_id !== 'string' || findall_id.trim().length === 0) {
-        return {
-          success: false,
-          error: 'findall_id is required and must be a non-empty string',
-        };
+        return formatError('findall_id is required and must be a non-empty string');
       }
 
       // If waiting for completion, poll for status first
@@ -478,10 +478,7 @@ export const findAllResultsTool = createTool({
         findall_id: context.findall_id,
       });
 
-      return {
-        success: false,
-        error: `FindAll results retrieval failed: ${errorMessage}`,
-      };
+      return formatError('FindAll results retrieval failed', errorMessage);
     }
   },
 });
@@ -521,14 +518,17 @@ export const findAllCompleteTool = createTool({
       .default(900)
       .describe('Maximum time to wait for completion in seconds (default: 900 = 15 minutes)'),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    findall_id: z.string().optional(),
-    status: z.any().optional(),
-    candidates: z.array(z.any()).optional(),
-    metrics: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      findall_id: z.string(),
+      status: z.any(),
+      candidates: z.array(z.any()),
+      metrics: z.any().optional(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('findAllComplete: Starting complete workflow');
@@ -542,10 +542,7 @@ export const findAllCompleteTool = createTool({
       } = context;
 
       if (!objective || typeof objective !== 'string' || objective.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Objective is required and must be a non-empty string',
-        };
+        return formatError('Objective is required and must be a non-empty string');
       }
 
       // Step 1: Ingest to get schema
@@ -556,10 +553,7 @@ export const findAllCompleteTool = createTool({
       } catch (ingestError) {
         const errorMsg =
           ingestError instanceof Error ? ingestError.message : String(ingestError);
-        return {
-          success: false,
-          error: `Ingest failed: ${errorMsg}`,
-        };
+        return formatError('Ingest failed', errorMsg);
       }
 
       // Step 2: Create run
@@ -589,17 +583,11 @@ export const findAllCompleteTool = createTool({
       } catch (runError) {
         const errorMsg =
           runError instanceof Error ? runError.message : String(runError);
-        return {
-          success: false,
-          error: `Run creation failed: ${errorMsg}`,
-        };
+        return formatError('Run creation failed', errorMsg);
       }
 
       if (!runResult.findall_id) {
-        return {
-          success: false,
-          error: 'Failed to create FindAll run: No findall_id returned',
-        };
+        return formatError('Failed to create FindAll run: No findall_id returned');
       }
 
       const findallId: string = runResult.findall_id;
@@ -680,10 +668,7 @@ export const findAllCompleteTool = createTool({
         objective: context.objective,
       });
 
-      return {
-        success: false,
-        error: `FindAll complete workflow failed: ${errorMessage}`,
-      };
+      return formatError('FindAll complete workflow failed', errorMessage);
     }
   },
 });

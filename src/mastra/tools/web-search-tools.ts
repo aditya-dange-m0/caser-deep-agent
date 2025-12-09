@@ -7,6 +7,15 @@ config();
 
 const PARALLEL_API_KEY = process.env.PARALLEL_API_KEY;
 
+// Helper function to format error messages as simple strings (not JSON)
+// This reduces context pollution by returning plain text for errors
+const formatError = (message: string, context?: string): string => {
+  if (context) {
+    return `${message}: ${context}`;
+  }
+  return message;
+};
+
 // Initialize Parallel AI client
 const getParallelClient = () => {
   if (!PARALLEL_API_KEY) {
@@ -129,12 +138,15 @@ export const webSearchTool = createTool({
       .default(true)
       .describe('Include detailed excerpts from search results'),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    results: z.array(z.any()).optional(),
-    summary: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      results: z.array(z.any()),
+      summary: z.any(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('webSearch: Starting execution');
@@ -161,10 +173,7 @@ export const webSearchTool = createTool({
       });
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
-        return {
-          success: false,
-          error: 'Search query is required and must be a non-empty string',
-        };
+        return formatError('Search query is required and must be a non-empty string');
       }
 
       // Initialize Parallel client
@@ -174,10 +183,7 @@ export const webSearchTool = createTool({
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         mastra?.getLogger()?.error(errorMsg);
-        return {
-          success: false,
-          error: errorMsg,
-        };
+        return formatError('Failed to initialize Parallel client', errorMsg);
       }
 
       console.log('webSearch: Creating task with processor', processor);
@@ -205,10 +211,7 @@ Provide ${maxResults} results total.`;
         mastra
           ?.getLogger()
           ?.error('Failed to create task', { error: errorMsg });
-        return {
-          success: false,
-          error: `Failed to create task: ${errorMsg}`,
-        };
+        return formatError('Failed to create task', errorMsg);
       }
 
       const runId = taskRun.run_id;
@@ -233,10 +236,7 @@ Provide ${maxResults} results total.`;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.error('webSearch: Failed to get task result', errorMsg);
-        return {
-          success: false,
-          error: `Failed to get task result: ${errorMsg}`,
-        };
+        return formatError('Failed to get task result', errorMsg);
       }
 
       console.log('webSearch: Task completed', {
@@ -327,10 +327,7 @@ Provide ${maxResults} results total.`;
         query: context.query,
       });
 
-      return {
-        success: false,
-        error: `Web search failed: ${errorMessage}`,
-      };
+      return formatError('Web search failed', errorMessage);
     }
   },
 });
@@ -364,13 +361,16 @@ export const advancedWebSearchTool = createTool({
         'Processor to use - lite for faster/basic, base for more comprehensive',
       ),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    results: z.array(z.any()).optional(),
-    queryResults: z.record(z.string(), z.array(z.any())).optional(),
-    summary: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      results: z.array(z.any()).optional(),
+      queryResults: z.record(z.string(), z.array(z.any())).optional(),
+      summary: z.any(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('advancedWebSearch: Starting execution');
@@ -389,10 +389,7 @@ export const advancedWebSearchTool = createTool({
         typeof mainQuery !== 'string' ||
         mainQuery.trim().length === 0
       ) {
-        return {
-          success: false,
-          error: 'Main search query is required and must be a non-empty string',
-        };
+        return formatError('Main search query is required and must be a non-empty string');
       }
 
       // Initialize Parallel client
@@ -402,10 +399,7 @@ export const advancedWebSearchTool = createTool({
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         mastra?.getLogger()?.error(errorMsg);
-        return {
-          success: false,
-          error: errorMsg,
-        };
+        return formatError('Failed to initialize Parallel client', errorMsg);
       }
 
       const allQueries = [mainQuery, ...relatedQueries];
@@ -535,10 +529,7 @@ Provide ${maxResultsPerQuery} results total.`;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('advancedWebSearch: Error', errorMessage);
-      return {
-        success: false,
-        error: `Advanced web search failed: ${errorMessage}`,
-      };
+      return formatError('Advanced web search failed', errorMessage);
     }
   },
 });
@@ -560,13 +551,16 @@ export const analyzeSearchResultsTool = createTool({
       .default(true)
       .describe('Include trend analysis'),
   }),
-  outputSchema: z.object({
-    success: z.boolean(),
-    analysis: z.any().optional(),
-    keyInsights: z.array(z.string()).optional(),
-    trends: z.any().optional(),
-    error: z.string().optional(),
-  }),
+  // Output can be a string (error) or object (success) to reduce context pollution
+  outputSchema: z.union([
+    z.string(), // Error messages as simple strings
+    z.object({
+      success: z.literal(true),
+      analysis: z.any(),
+      keyInsights: z.array(z.string()),
+      trends: z.any(),
+    }),
+  ]),
   execute: async ({ context, mastra }) => {
     try {
       console.log('analyzeSearchResults: Starting execution');
@@ -575,10 +569,7 @@ export const analyzeSearchResultsTool = createTool({
       const { results, focusAreas = [], includeTrends = true } = context;
 
       if (!results || !Array.isArray(results) || results.length === 0) {
-        return {
-          success: false,
-          error: 'Results array is required and must not be empty',
-        };
+        return formatError('Results array is required and must not be empty');
       }
 
       // Extract key information from results
@@ -663,10 +654,7 @@ export const analyzeSearchResultsTool = createTool({
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('analyzeSearchResults: Error', errorMessage);
-      return {
-        success: false,
-        error: `Search results analysis failed: ${errorMessage}`,
-      };
+      return formatError('Search results analysis failed', errorMessage);
     }
   },
 });
