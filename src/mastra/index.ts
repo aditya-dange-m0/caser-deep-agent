@@ -1,6 +1,6 @@
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
-import { libSQLStore } from './shared/storage/memory-store';
+import { memoryStore } from './shared/storage/memory-store';
 import { webSearchAgent } from './agents/web-search-agent';
 import { quickDeepResearchAgent } from './agents/quick-deep-research-agent';
 import { deepResearchAgent } from './agents/deep-research-agent';
@@ -15,7 +15,7 @@ export const mastra = new Mastra({
     ultraDeepResearchAgent, // Ultra deep research agent with pro, ultra, ultra2x, ultra4x, ultra8x processors
     findAllAgent, // FindAll agent for entity discovery using Parallel AI FindAll API
   },
-  storage: libSQLStore,
+  storage: memoryStore,
   logger: new PinoLogger({
     name: 'MastraAgents',
     level: 'info',

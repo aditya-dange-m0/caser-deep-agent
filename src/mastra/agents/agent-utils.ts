@@ -1,14 +1,14 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { Memory } from '@mastra/memory';
-import { libSQLStore, libSQLVector } from '../shared/storage/memory-store';
+import { memoryStore } from '../shared/storage/memory-store';
 
 // Check if OpenAI API key is available for embeddings
 export const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
 export const openai = hasOpenAIKey
   ? createOpenAI({
-    apiKey: process.env.OPENAI_API_KEY!,
-  })
+      apiKey: process.env.OPENAI_API_KEY!,
+    })
   : null;
 
 export const getDefaultLLM = () =>
@@ -16,14 +16,16 @@ export const getDefaultLLM = () =>
 
 export const createMemory = (workingMemoryTemplate: string) => {
   return new Memory({
-    storage: libSQLStore,
-    ...(hasOpenAIKey && {
-      vector: libSQLVector,
-      embedder: openai!.textEmbeddingModel('text-embedding-3-small'),
-    }),
+    storage: memoryStore,
+    // Vector storage removed as per user request
+    ...(hasOpenAIKey &&
+      {
+        // vector: libSQLVector, // Removed
+        // embedder: openai!.textEmbeddingModel('text-embedding-3-small'), // Removed
+      }),
     options: {
       lastMessages: 8,
-      semanticRecall: hasOpenAIKey ? { topK: 4, messageRange: 2 } : false,
+      semanticRecall: false, // Disabled semantic recall as vector store is removed
       threads: { generateTitle: true },
       workingMemory: {
         enabled: true,

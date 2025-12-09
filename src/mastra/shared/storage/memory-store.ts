@@ -1,65 +1,66 @@
-import { config } from 'dotenv';
-config();
+import { PostgresStore } from '@mastra/pg';
 
-import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
-import { mkdirSync } from 'fs';
-import { dirname, resolve } from 'path';
+const connectionString = process.env.DATABASE_URL!;
 
-// Ensure data directory exists
-// This database is shared across all agents (web search, quick deep research, deep research, ultra deep research)
-let dbPath = process.env.LIBSQL_URL || "file:./data/mastra-agents-memory.db";
-if (dbPath.startsWith("file:")) {
-  const dbFilePath = dbPath.replace("file:", "");
-  // Resolve to absolute path to ensure it works from any working directory
-  const absolutePath = resolve(process.cwd(), dbFilePath);
-  const dbDir = dirname(absolutePath);
-  try {
-    mkdirSync(dbDir, { recursive: true });
-  } catch (error) {
-    // Directory might already exist, ignore error
-  }
-  // Use absolute path for LibSQL
-  dbPath = `file:${absolutePath}`;
-}
+// Determine if SSL should be enabled based on connection string
+// Local connections (localhost, 127.0.0.1) typically don't need SSL
+const isLocalConnection =
+  connectionString.includes('localhost') ||
+  connectionString.includes('127.0.0.1') ||
+  connectionString.includes(':5433'); // Docker port
 
-// Subclass LibSQLStore to safely handle schema initialization
-class SafeLibSQLStore extends LibSQLStore {
+// SSL configuration - only enable for remote/production connections
+const sslConfig = isLocalConnection
+  ? false // Disable SSL for local development
+  : {
+      rejectUnauthorized: false, // Enable SSL for production (cloud databases)
+    };
+
+class SafePostgresStore extends PostgresStore {
   private initAttempts = 0;
   private maxInitAttempts = 3;
 
   async init(): Promise<void> {
     try {
-      // Let Mastra handle its own table creation and management
       await super.init();
-      console.log(
-        '[Mastra] LibSQLStore initialized successfully - Mastra tables managed automatically',
-      );
+      console.log('[Mastra] Memory store initialized successfully');
     } catch (err: any) {
-      // Handle common database errors gracefully
-      if (err.code === 'SQLITE_ERROR' && err.message?.includes('already exists')) {
+      if (
+        err.code === '42P07' ||
+        err.code === '42701' ||
+        err.code === '42703'
+      ) {
+        // 42P07: relation already exists, others are column issues
         console.warn(
           '[Mastra] Handling schema differences - Mastra will manage table structure:',
           err.message,
         );
-        // Continue without throwing error for schema mismatches
         return;
-      } else if (this.initAttempts < this.maxInitAttempts && 
-                (err.message?.includes('connection') || err.code === 'ECONNREFUSED')) {
+      } else if (
+        this.initAttempts < this.maxInitAttempts &&
+        (err.message?.includes('connection') || err.code === 'ECONNREFUSED')
+      ) {
         this.initAttempts++;
         console.warn(
-          `[Mastra] Retrying LibSQLStore init (attempt ${this.initAttempts}/${this.maxInitAttempts}):`,
+          `[Mastra] Retrying memory store init (attempt ${this.initAttempts}/${this.maxInitAttempts}):`,
           err.message,
         );
-        await new Promise((resolve) => setTimeout(resolve, 2000 * this.initAttempts));
+        await new Promise((resolve) =>
+          setTimeout(resolve, 2000 * this.initAttempts),
+        );
         return this.init();
       } else {
         console.error(
-          '[Mastra] Failed to initialize LibSQLStore:',
+          '[Mastra] Failed to initialize memory store:',
           err.message,
         );
-        // Don't throw for schema-related errors, let Mastra handle them
-        if (err.code && ['SQLITE_ERROR'].includes(err.code)) {
-          console.warn('[Mastra] Continuing despite schema error - Mastra will self-manage');
+        if (
+          err.code &&
+          ['42P07', '42701', '42703', '42P01'].includes(err.code)
+        ) {
+          console.warn(
+            '[Mastra] Continuing despite schema error - Mastra will self-manage',
+          );
           return;
         }
         throw err;
@@ -68,19 +69,14 @@ class SafeLibSQLStore extends LibSQLStore {
   }
 }
 
-// Singleton instances to prevent duplicate database objects
-export const libSQLStore = new SafeLibSQLStore({
-  url: dbPath,
+export const memoryStore = new SafePostgresStore({
+  connectionString,
+  ...(sslConfig !== false ? { ssl: sslConfig } : {}), // Only add SSL config for production
 });
 
-export const libSQLVector = new LibSQLVector({
-  connectionUrl: dbPath,
-});
-
-// Initialize stores with error handling
 export async function initializeStores() {
   try {
-    await libSQLStore.init();
+    await memoryStore.init();
     console.log('[Mastra] Memory stores initialized successfully');
   } catch (error) {
     console.error('[Mastra] Failed to initialize memory stores:', error);
