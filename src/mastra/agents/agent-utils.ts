@@ -7,12 +7,12 @@ export const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
 export const openai = hasOpenAIKey
   ? createOpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
-    })
+    apiKey: process.env.OPENAI_API_KEY!,
+  })
   : null;
 
 export const getDefaultLLM = () =>
-  openai ? openai('gpt-4o-mini') : 'google/gemini-2.0-flash';
+  openai ? openai('gpt-4o-mini') : 'google/gemini-2.5-flash';
 
 export const createMemory = (workingMemoryTemplate: string) => {
   return new Memory({
