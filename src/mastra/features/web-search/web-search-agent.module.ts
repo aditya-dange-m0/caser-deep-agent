@@ -4,6 +4,7 @@ import { WebSearchAgentService } from './services/web-search-agent.service';
 import { ParallelSseService } from '../../shared/services/streaming/parallel-sse.service';
 import { ParallelTaskService } from '../../common/parallel-task.service';
 import { FileLoggerService } from '../../common/file-logger.service';
+import { TimeoutConfigService } from '../../common/timeout-config.service';
 import { WebSearchStreamingService } from './services/web-search-streaming.service';
 
 @Module({
@@ -11,6 +12,7 @@ import { WebSearchStreamingService } from './services/web-search-streaming.servi
   providers: [
     WebSearchAgentService,
     FileLoggerService,
+    TimeoutConfigService,
     ParallelSseService,
     ParallelTaskService,
     WebSearchStreamingService,

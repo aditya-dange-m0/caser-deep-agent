@@ -31,6 +31,9 @@ export class TimeoutConfigService {
   // SSE streaming configuration
   private readonly sseStreamTimeoutMs: number;
   private readonly sseReconnectBaseDelayMs: number;
+  private readonly sseMaxReconnectAttempts: number;
+  private readonly sseMaxReconnectDelayMs: number;
+  private readonly sseBufferMaxSizeBytes: number;
 
   constructor() {
     // Task polling defaults: 144 attempts * 1 second = ~1 hour max
@@ -109,6 +112,18 @@ export class TimeoutConfigService {
       'SSE_RECONNECT_BASE_DELAY_MS',
       1000,
     );
+    this.sseMaxReconnectAttempts = this.getEnvNumber(
+      'SSE_MAX_RECONNECT_ATTEMPTS',
+      10,
+    );
+    this.sseMaxReconnectDelayMs = this.getEnvNumber(
+      'SSE_MAX_RECONNECT_DELAY_MS',
+      30000, // 30 seconds max
+    );
+    this.sseBufferMaxSizeBytes = this.getEnvNumber(
+      'SSE_BUFFER_MAX_SIZE_BYTES',
+      10485760, // 10 MB max buffer size
+    );
   }
 
   /**
@@ -181,8 +196,22 @@ export class TimeoutConfigService {
    * Get SSE reconnect delay configuration
    */
   getSseReconnectDelay(attempt: number): number {
-    // Exponential backoff: baseDelay * 2^(attempt - 1)
-    return this.sseReconnectBaseDelayMs * Math.pow(2, attempt - 1);
+    // Exponential backoff: baseDelay * 2^(attempt - 1), capped at max delay
+    const delay = this.sseReconnectBaseDelayMs * Math.pow(2, attempt - 1);
+    return Math.min(delay, this.sseMaxReconnectDelayMs);
+  }
+
+  /**
+   * Get SSE streaming configuration
+   */
+  getSseStreamConfig() {
+    return {
+      streamTimeoutMs: this.sseStreamTimeoutMs,
+      maxReconnectAttempts: this.sseMaxReconnectAttempts,
+      reconnectBaseDelayMs: this.sseReconnectBaseDelayMs,
+      maxReconnectDelayMs: this.sseMaxReconnectDelayMs,
+      bufferMaxSizeBytes: this.sseBufferMaxSizeBytes,
+    };
   }
 
   /**

@@ -1,14 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { config } from 'dotenv';
 import { FileLoggerService } from '../../../common/file-logger.service';
+import {
+  TimeoutConfigService,
+  getTimeoutConfig,
+} from '../../../common/timeout-config.service';
 
 config();
 
 @Injectable()
 export class ParallelSseService {
   private readonly logger = new Logger(ParallelSseService.name);
+  private readonly sseConfig: ReturnType<
+    TimeoutConfigService['getSseStreamConfig']
+  >;
 
-  constructor(private readonly fileLogger?: FileLoggerService) {}
+  constructor(
+    private readonly fileLogger?: FileLoggerService,
+    private readonly timeoutConfig?: TimeoutConfigService,
+  ) {
+    // Use injected config if available, otherwise get singleton
+    const configService = this.timeoutConfig || getTimeoutConfig();
+    this.sseConfig = configService.getSseStreamConfig();
+  }
 
   /**
    * Stream Parallel AI events using SSE (Node.js compatible)
@@ -51,12 +65,50 @@ export class ParallelSseService {
     let lastKnownRun: any = null;
     let lastEventId: string | null = null;
     let reconnectAttempt = 0;
-    const maxReconnectAttempts = 10;
+    let currentReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let streamTimeoutId: NodeJS.Timeout | null = null;
 
     return new Promise((resolve, reject) => {
+      // Set overall stream timeout (inside Promise to access reject)
+      streamTimeoutId = setTimeout(() => {
+        if (!hasCompleted) {
+          hasCompleted = true;
+          this.logger.error(
+            `[SSE] Stream timeout after ${this.sseConfig.streamTimeoutMs}ms for run_id: ${runId}`,
+          );
+          // Close reader if still open
+          if (currentReader) {
+            try {
+              currentReader.cancel();
+              currentReader.releaseLock();
+            } catch (err) {
+              this.logger.warn(`[SSE] Error closing reader on timeout:`, err);
+            }
+            currentReader = null;
+          }
+          if (this.fileLogger) {
+            this.fileLogger
+              .logError(runId, {
+                message: `Stream timeout after ${this.sseConfig.streamTimeoutMs}ms`,
+                type: 'stream_timeout',
+                eventCount,
+              })
+              .catch(() => {});
+          }
+          reject(
+            new Error(
+              `Stream timeout after ${this.sseConfig.streamTimeoutMs}ms`,
+            ),
+          );
+        }
+      }, this.sseConfig.streamTimeoutMs);
       const streamWithReconnect = async (
         lastEventIdParam: string | null = null,
+        reconnectAttemptParam: number = 0,
       ) => {
+        // Isolate reconnection variables per connection attempt
+        const currentReconnectAttempt = reconnectAttemptParam;
+
         // Update lastEventId from parameter if provided
         if (lastEventIdParam !== null) {
           lastEventId = lastEventIdParam;
@@ -69,11 +121,13 @@ export class ParallelSseService {
           : baseUrl;
 
         const connectionLabel = lastEventId
-          ? `[SSE] Reconnecting (attempt ${reconnectAttempt + 1}/${maxReconnectAttempts}) for run_id: ${runId} from event_id: ${lastEventId}`
+          ? `[SSE] Reconnecting (attempt ${currentReconnectAttempt + 1}/${this.sseConfig.maxReconnectAttempts}) for run_id: ${runId} from event_id: ${lastEventId}`
           : `[SSE] Connecting to Parallel AI SSE endpoint for run_id: ${runId}`;
 
         this.logger.log(connectionLabel);
         this.logger.debug(`[SSE] URL: ${url}`);
+
+        let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
         try {
           const response = await fetch(url, {
@@ -102,9 +156,23 @@ export class ParallelSseService {
             `[SSE] SSE stream connected successfully for run_id: ${runId}${lastEventId ? ` (resumed from event ${lastEventId})` : ''}`,
           );
 
-          const reader = response.body.getReader();
+          // Close previous reader if it exists
+          if (currentReader) {
+            try {
+              currentReader.cancel();
+              currentReader.releaseLock();
+            } catch (err) {
+              this.logger.warn(`[SSE] Error closing previous reader:`, err);
+            }
+          }
+
+          reader = response.body.getReader();
+          currentReader = reader; // Track current reader for cleanup
+
           const decoder = new TextDecoder();
           let buffer = '';
+          let bufferSizeBytes = 0;
+          const maxBufferSize = this.sseConfig.bufferMaxSizeBytes;
           let currentEventType = 'message';
           let currentEventId: string | null = null;
 
@@ -205,6 +273,26 @@ export class ParallelSseService {
                         );
                       });
                   }
+
+                  // Clean up: close reader and clear timeout
+                  try {
+                    if (currentReader) {
+                      currentReader.cancel().catch(() => {});
+                      currentReader.releaseLock();
+                      currentReader = null;
+                    }
+                  } catch (closeError) {
+                    this.logger.warn(
+                      `[SSE] Error closing reader on completion:`,
+                      closeError,
+                    );
+                  }
+
+                  if (streamTimeoutId) {
+                    clearTimeout(streamTimeoutId);
+                    streamTimeoutId = null;
+                  }
+
                   resolve(finalResult);
                 }
               } else if (data.run?.status === 'failed') {
@@ -243,6 +331,26 @@ export class ParallelSseService {
                         );
                       });
                   }
+
+                  // Clean up: close reader and clear timeout
+                  try {
+                    if (currentReader) {
+                      currentReader.cancel().catch(() => {});
+                      currentReader.releaseLock();
+                      currentReader = null;
+                    }
+                  } catch (closeError) {
+                    this.logger.warn(
+                      `[SSE] Error closing reader on failure:`,
+                      closeError,
+                    );
+                  }
+
+                  if (streamTimeoutId) {
+                    clearTimeout(streamTimeoutId);
+                    streamTimeoutId = null;
+                  }
+
                   reject(new Error(errorMsg));
                 }
               }
@@ -252,12 +360,92 @@ export class ParallelSseService {
           const processStream = async () => {
             try {
               while (!hasCompleted) {
-                const { done, value } = await reader.read();
+                if (!reader) {
+                  throw new Error('Reader is null');
+                }
+
+                let readResult: ReadableStreamReadResult<Uint8Array>;
+                try {
+                  readResult = await reader.read();
+                } catch (readError) {
+                  // Reader error - try to recover
+                  this.logger.warn(
+                    `[SSE] Reader read error for run_id ${runId}:`,
+                    readError,
+                  );
+
+                  // Try to close and release the reader
+                  try {
+                    if (reader) {
+                      await reader.cancel();
+                      reader.releaseLock();
+                    }
+                  } catch (closeError) {
+                    this.logger.warn(
+                      `[SSE] Error closing reader after read error:`,
+                      closeError,
+                    );
+                  }
+
+                  // Reconnect if task is still running
+                  if (
+                    lastKnownStatus === 'running' &&
+                    currentReconnectAttempt <
+                      this.sseConfig.maxReconnectAttempts
+                  ) {
+                    const nextAttempt = currentReconnectAttempt + 1;
+                    reconnectAttempt = nextAttempt;
+                    const delayMs = this.timeoutConfig
+                      ? this.timeoutConfig.getSseReconnectDelay(nextAttempt)
+                      : getTimeoutConfig().getSseReconnectDelay(nextAttempt);
+
+                    this.logger.warn(
+                      `[SSE] Reader error, reconnecting in ${delayMs}ms (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})...`,
+                    );
+
+                    onEvent({
+                      type: 'stream_reconnect',
+                      data: {
+                        message: `Reader error, reconnecting... (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})`,
+                        lastEventId,
+                        reconnectAttempt: nextAttempt,
+                        lastKnownStatus,
+                        error:
+                          readError instanceof Error
+                            ? readError.message
+                            : 'Reader read error',
+                      },
+                    });
+
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, delayMs),
+                    );
+                    await streamWithReconnect(lastEventId, nextAttempt);
+                    return;
+                  } else {
+                    throw readError;
+                  }
+                }
+
+                const { done, value } = readResult;
 
                 if (done) {
                   this.logger.log(
                     `[SSE] Stream reader done for run_id: ${runId} (events processed: ${eventCount})`,
                   );
+
+                  // Properly close the reader
+                  try {
+                    if (reader) {
+                      reader.releaseLock();
+                      currentReader = null;
+                    }
+                  } catch (closeError) {
+                    this.logger.warn(
+                      `[SSE] Error releasing reader lock:`,
+                      closeError,
+                    );
+                  }
 
                   // If stream ended and task is still running, reconnect
                   if (
@@ -265,24 +453,24 @@ export class ParallelSseService {
                     !hasCompleted &&
                     lastKnownStatus === 'running'
                   ) {
-                    if (reconnectAttempt < maxReconnectAttempts) {
-                      reconnectAttempt++;
-                      const delayMs = Math.min(
-                        1000 * Math.pow(2, reconnectAttempt - 1),
-                        30000,
-                      ); // Exponential backoff, max 30s
+                    const nextAttempt = currentReconnectAttempt + 1;
+                    if (nextAttempt < this.sseConfig.maxReconnectAttempts) {
+                      reconnectAttempt = nextAttempt;
+                      const delayMs = this.timeoutConfig
+                        ? this.timeoutConfig.getSseReconnectDelay(nextAttempt)
+                        : getTimeoutConfig().getSseReconnectDelay(nextAttempt);
 
                       this.logger.warn(
-                        `[SSE] Stream disconnected while task is still running. Reconnecting in ${delayMs}ms (attempt ${reconnectAttempt}/${maxReconnectAttempts})...`,
+                        `[SSE] Stream disconnected while task is still running. Reconnecting in ${delayMs}ms (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})...`,
                       );
 
                       // Emit reconnection event
                       onEvent({
                         type: 'stream_reconnect',
                         data: {
-                          message: `Stream disconnected, reconnecting... (attempt ${reconnectAttempt}/${maxReconnectAttempts})`,
+                          message: `Stream disconnected, reconnecting... (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})`,
                           lastEventId,
-                          reconnectAttempt,
+                          reconnectAttempt: nextAttempt,
                           lastKnownStatus,
                         },
                       });
@@ -293,11 +481,11 @@ export class ParallelSseService {
                       );
 
                       // Reconnect with last event ID
-                      await streamWithReconnect(lastEventId);
+                      await streamWithReconnect(lastEventId, nextAttempt);
                       return;
                     } else {
                       // Max reconnection attempts reached
-                      const errorMessage = `Stream ended without final result after ${maxReconnectAttempts} reconnection attempts. Last known status: ${lastKnownStatus} (events processed: ${eventCount})`;
+                      const errorMessage = `Stream ended without final result after ${this.sseConfig.maxReconnectAttempts} reconnection attempts. Last known status: ${lastKnownStatus} (events processed: ${eventCount})`;
                       this.logger.error(`[SSE] ${errorMessage}`);
 
                       if (this.fileLogger) {
@@ -309,7 +497,7 @@ export class ParallelSseService {
                             lastKnownStatus,
                             lastKnownRun,
                             lastEventId,
-                            reconnectAttempts: reconnectAttempt,
+                            reconnectAttempts: nextAttempt,
                           })
                           .catch((err: Error) => {
                             this.logger.warn(
@@ -317,6 +505,10 @@ export class ParallelSseService {
                               err,
                             );
                           });
+                      }
+                      if (streamTimeoutId) {
+                        clearTimeout(streamTimeoutId);
+                        streamTimeoutId = null;
                       }
                       reject(new Error(errorMessage));
                       return;
@@ -348,17 +540,72 @@ export class ParallelSseService {
                           );
                         });
                     }
+                    if (streamTimeoutId) {
+                      clearTimeout(streamTimeoutId);
+                      streamTimeoutId = null;
+                    }
                     reject(new Error(errorMessage));
                     return;
                   }
                   return;
                 }
 
-                buffer += decoder.decode(value, { stream: true });
+                // Decode new chunk and add to buffer
+                const decodedChunk = decoder.decode(value, { stream: true });
+                const chunkSizeBytes = new TextEncoder().encode(
+                  decodedChunk,
+                ).length;
+                bufferSizeBytes += chunkSizeBytes;
+
+                // Check buffer size limit to prevent unbounded growth
+                if (bufferSizeBytes > maxBufferSize) {
+                  const errorMessage = `SSE buffer exceeded maximum size of ${maxBufferSize} bytes (current: ${bufferSizeBytes} bytes). This may indicate a malformed stream or excessive data.`;
+                  this.logger.error(
+                    `[SSE] ${errorMessage} for run_id: ${runId}`,
+                  );
+
+                  // Try to close reader
+                  try {
+                    if (reader) {
+                      await reader.cancel();
+                      reader.releaseLock();
+                      currentReader = null;
+                    }
+                  } catch (closeError) {
+                    this.logger.warn(
+                      `[SSE] Error closing reader after buffer overflow:`,
+                      closeError,
+                    );
+                  }
+
+                  if (this.fileLogger) {
+                    this.fileLogger
+                      .logError(runId, {
+                        message: errorMessage,
+                        type: 'buffer_overflow',
+                        bufferSizeBytes,
+                        maxBufferSize,
+                        eventCount,
+                      })
+                      .catch(() => {});
+                  }
+
+                  if (streamTimeoutId) {
+                    clearTimeout(streamTimeoutId);
+                    streamTimeoutId = null;
+                  }
+                  reject(new Error(errorMessage));
+                  return;
+                }
+
+                buffer += decodedChunk;
 
                 // Parse complete SSE events (events are separated by double newlines)
                 const eventBlocks = buffer.split('\n\n');
-                buffer = eventBlocks.pop() || ''; // Keep incomplete event in buffer
+                const incompleteEvent = eventBlocks.pop() || '';
+                buffer = incompleteEvent; // Keep incomplete event in buffer
+                // Update buffer size after removing processed events
+                bufferSizeBytes = new TextEncoder().encode(buffer).length;
 
                 for (const eventBlock of eventBlocks) {
                   if (!eventBlock.trim()) continue;
@@ -397,20 +644,34 @@ export class ParallelSseService {
                 }
               }
             } catch (error) {
+              // Ensure reader is closed on error
+              try {
+                if (reader) {
+                  await reader.cancel();
+                  reader.releaseLock();
+                  currentReader = null;
+                }
+              } catch (closeError) {
+                this.logger.warn(
+                  `[SSE] Error closing reader on stream error:`,
+                  closeError,
+                );
+              }
+
               if (!hasCompleted) {
                 // Connection error - try to reconnect if task is still running
                 if (
                   lastKnownStatus === 'running' &&
-                  reconnectAttempt < maxReconnectAttempts
+                  currentReconnectAttempt < this.sseConfig.maxReconnectAttempts
                 ) {
-                  reconnectAttempt++;
-                  const delayMs = Math.min(
-                    1000 * Math.pow(2, reconnectAttempt - 1),
-                    30000,
-                  );
+                  const nextAttempt = currentReconnectAttempt + 1;
+                  reconnectAttempt = nextAttempt;
+                  const delayMs = this.timeoutConfig
+                    ? this.timeoutConfig.getSseReconnectDelay(nextAttempt)
+                    : getTimeoutConfig().getSseReconnectDelay(nextAttempt);
 
                   this.logger.warn(
-                    `[SSE] Stream processing error for run_id ${runId}. Reconnecting in ${delayMs}ms (attempt ${reconnectAttempt}/${maxReconnectAttempts})...`,
+                    `[SSE] Stream processing error for run_id ${runId}. Reconnecting in ${delayMs}ms (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})...`,
                     error,
                   );
 
@@ -418,9 +679,9 @@ export class ParallelSseService {
                   onEvent({
                     type: 'stream_reconnect',
                     data: {
-                      message: `Stream error occurred, reconnecting... (attempt ${reconnectAttempt}/${maxReconnectAttempts})`,
+                      message: `Stream error occurred, reconnecting... (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})`,
                       lastEventId,
-                      reconnectAttempt,
+                      reconnectAttempt: nextAttempt,
                       lastKnownStatus,
                       error:
                         error instanceof Error
@@ -433,7 +694,7 @@ export class ParallelSseService {
                   await new Promise((resolve) => setTimeout(resolve, delayMs));
 
                   // Reconnect with last event ID
-                  await streamWithReconnect(lastEventId);
+                  await streamWithReconnect(lastEventId, nextAttempt);
                 } else {
                   hasCompleted = true;
                   this.logger.error(
@@ -452,7 +713,7 @@ export class ParallelSseService {
                         stack: error instanceof Error ? error.stack : undefined,
                         eventCount,
                         lastEventId,
-                        reconnectAttempts: reconnectAttempt,
+                        reconnectAttempts: currentReconnectAttempt,
                       })
                       .catch((err: Error) => {
                         this.logger.warn(
@@ -461,6 +722,10 @@ export class ParallelSseService {
                         );
                       });
                   }
+                  if (streamTimeoutId) {
+                    clearTimeout(streamTimeoutId);
+                    streamTimeoutId = null;
+                  }
                   reject(error);
                 }
               }
@@ -468,8 +733,94 @@ export class ParallelSseService {
           };
 
           // Start processing the stream
-          processStream();
+          processStream().catch((streamError) => {
+            // Additional error handling for processStream promise rejection
+            if (!hasCompleted) {
+              this.logger.error(
+                `[SSE] Unhandled error in processStream for run_id ${runId}:`,
+                streamError,
+              );
+
+              // Ensure reader is closed
+              try {
+                if (reader) {
+                  reader.cancel().catch(() => {});
+                  reader.releaseLock();
+                  currentReader = null;
+                }
+              } catch (closeError) {
+                this.logger.warn(
+                  `[SSE] Error closing reader in catch:`,
+                  closeError,
+                );
+              }
+
+              // Try to reconnect if possible
+              if (
+                lastKnownStatus === 'running' &&
+                currentReconnectAttempt < this.sseConfig.maxReconnectAttempts
+              ) {
+                const nextAttempt = currentReconnectAttempt + 1;
+                reconnectAttempt = nextAttempt;
+                const delayMs = this.timeoutConfig
+                  ? this.timeoutConfig.getSseReconnectDelay(nextAttempt)
+                  : getTimeoutConfig().getSseReconnectDelay(nextAttempt);
+
+                this.logger.warn(
+                  `[SSE] Unhandled stream error, attempting recovery reconnect in ${delayMs}ms (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})...`,
+                );
+
+                onEvent({
+                  type: 'stream_reconnect',
+                  data: {
+                    message: `Unhandled stream error, attempting recovery... (attempt ${nextAttempt}/${this.sseConfig.maxReconnectAttempts})`,
+                    lastEventId,
+                    reconnectAttempt: nextAttempt,
+                    lastKnownStatus,
+                    error:
+                      streamError instanceof Error
+                        ? streamError.message
+                        : 'Unknown stream error',
+                  },
+                });
+
+                setTimeout(() => {
+                  streamWithReconnect(lastEventId, nextAttempt).catch(
+                    (reconnectError) => {
+                      hasCompleted = true;
+                      if (streamTimeoutId) {
+                        clearTimeout(streamTimeoutId);
+                        streamTimeoutId = null;
+                      }
+                      reject(reconnectError);
+                    },
+                  );
+                }, delayMs);
+              } else {
+                hasCompleted = true;
+                if (streamTimeoutId) {
+                  clearTimeout(streamTimeoutId);
+                  streamTimeoutId = null;
+                }
+                reject(streamError);
+              }
+            }
+          });
         } catch (error) {
+          // Ensure reader is closed on fetch error
+          try {
+            if (reader) {
+              reader.cancel().catch(() => {});
+              reader.releaseLock();
+              currentReader = null;
+            }
+          } catch (closeError) {
+            this.logger.warn(
+              `[SSE] Error closing reader on fetch error:`,
+              closeError,
+            );
+          }
+
           if (!hasCompleted) {
             hasCompleted = true;
             this.logger.error(`[SSE] Fetch error for run_id ${runId}:`, error);
@@ -488,13 +839,17 @@ export class ParallelSseService {
                   this.logger.warn(`[SSE] Failed to log error to file:`, err);
                 });
             }
+            if (streamTimeoutId) {
+              clearTimeout(streamTimeoutId);
+              streamTimeoutId = null;
+            }
             reject(error);
           }
         }
       };
 
       // Start the initial stream
-      streamWithReconnect();
+      streamWithReconnect(null, 0);
     });
   }
 }

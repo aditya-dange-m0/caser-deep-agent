@@ -4,6 +4,7 @@ import { QuickDeepResearchAgentService } from './services/quick-deep-research-ag
 import { ParallelSseService } from '../../shared/services/streaming/parallel-sse.service';
 import { ParallelTaskService } from '../../common/parallel-task.service';
 import { FileLoggerService } from '../../common/file-logger.service';
+import { TimeoutConfigService } from '../../common/timeout-config.service';
 import { QuickDeepResearchStreamingService } from './services/quick-deep-research-streaming.service';
 
 @Module({
@@ -11,6 +12,7 @@ import { QuickDeepResearchStreamingService } from './services/quick-deep-researc
   providers: [
     QuickDeepResearchAgentService,
     FileLoggerService,
+    TimeoutConfigService,
     ParallelSseService,
     ParallelTaskService,
     QuickDeepResearchStreamingService,

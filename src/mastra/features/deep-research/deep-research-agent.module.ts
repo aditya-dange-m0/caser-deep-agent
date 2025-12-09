@@ -4,6 +4,7 @@ import { DeepResearchAgentService } from './services/deep-research-agent.service
 import { ParallelSseService } from '../../shared/services/streaming/parallel-sse.service';
 import { ParallelTaskService } from '../../common/parallel-task.service';
 import { FileLoggerService } from '../../common/file-logger.service';
+import { TimeoutConfigService } from '../../common/timeout-config.service';
 import { DeepResearchStreamingService } from './services/deep-research-streaming.service';
 
 @Module({
@@ -11,6 +12,7 @@ import { DeepResearchStreamingService } from './services/deep-research-streaming
   providers: [
     DeepResearchAgentService,
     FileLoggerService,
+    TimeoutConfigService,
     ParallelSseService,
     ParallelTaskService,
     DeepResearchStreamingService,
