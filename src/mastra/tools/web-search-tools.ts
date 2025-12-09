@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import Parallel from 'parallel-web';
 import { config } from 'dotenv';
+import { getTimeoutConfig } from '../common/timeout-config.service';
 
 config();
 
@@ -33,22 +34,33 @@ const getParallelClient = () => {
 const pollTaskResult = async (
   client: Parallel,
   runId: string,
-  maxAttempts: number = 144, // 144 attempts * 1 second = ~1 hour max
-  timeout: number = 25, // 25 second timeout per attempt
+  processor?: string,
+  maxAttempts?: number,
+  timeout?: number,
 ): Promise<any> => {
+  const timeoutConfig = getTimeoutConfig();
+
+  // Use processor-specific config if processor is provided, otherwise use defaults
+  const config = processor
+    ? timeoutConfig.getTaskPollingConfigForProcessor(processor)
+    : timeoutConfig.getTaskPollingConfig();
+
+  const finalMaxAttempts = maxAttempts ?? config.maxAttempts;
+  const finalTimeout = timeout ?? config.timeoutPerAttempt;
+  const intervalMs = config.intervalMs;
   let runResult;
 
-  for (let i = 0; i < maxAttempts; i++) {
+  for (let i = 0; i < finalMaxAttempts; i++) {
     try {
       // Log progress every 10 attempts, and always log the first attempt
       if (i === 0 || (i % 10 === 0 && i > 0)) {
         console.log(
-          `Polling attempt ${i + 1}/${maxAttempts} for run ID: ${runId} (timeout: ${timeout}s)`,
+          `Polling attempt ${i + 1}/${finalMaxAttempts} for run ID: ${runId} (timeout: ${finalTimeout}s)`,
         );
       }
 
       console.log(`Calling client.taskRun.result() for attempt ${i + 1}...`);
-      runResult = await client.taskRun.result(runId, { timeout });
+      runResult = await client.taskRun.result(runId, { timeout: finalTimeout });
       console.log(`Received response on attempt ${i + 1}`);
 
       // If we get a result with output, the task is complete
@@ -59,8 +71,10 @@ const pollTaskResult = async (
 
       // If result exists but no output yet, task is still processing
       if (runResult && runResult.output === undefined) {
-        console.log(`Task still processing, attempt ${i + 1}/${maxAttempts}`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        console.log(
+          `Task still processing, attempt ${i + 1}/${finalMaxAttempts}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
         continue;
       }
     } catch (error) {
@@ -76,29 +90,29 @@ const pollTaskResult = async (
         errorMsg.includes('not found')
       ) {
         // Task is still processing, wait and retry
-        if (i < maxAttempts - 1) {
+        if (i < finalMaxAttempts - 1) {
           console.log(
-            `Task not ready yet (attempt ${i + 1}/${maxAttempts}), retrying...`,
+            `Task not ready yet (attempt ${i + 1}/${finalMaxAttempts}), retrying...`,
           );
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
           continue;
         }
       }
 
       // If it's the last attempt or a fatal error, throw
-      if (i === maxAttempts - 1) {
+      if (i === finalMaxAttempts - 1) {
         console.error(`Final polling attempt failed: ${errorMsg}`);
         throw error;
       }
 
-      // Wait 1 second before retrying for other errors
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Wait before retrying for other errors
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
   }
 
   if (!runResult) {
     throw new Error(
-      `Task timeout: Maximum attempts (${maxAttempts}) exceeded for run ID: ${runId}`,
+      `Task timeout: Maximum attempts (${finalMaxAttempts}) exceeded for run ID: ${runId}`,
     );
   }
 
@@ -234,7 +248,7 @@ Provide ${maxResults} results total.`;
         console.log(
           'webSearch: Starting polling loop (144 attempts max, 25s timeout each)...',
         );
-        result = await pollTaskResult(client, runId, 144, 25);
+        result = await pollTaskResult(client, runId, processor);
         console.log('webSearch: Polling completed successfully');
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -457,7 +471,7 @@ Provide ${maxResultsPerQuery} results total.`;
           // Poll for results using Parallel SDK
           let result;
           try {
-            result = await pollTaskResult(client, runId, 144, 25);
+            result = await pollTaskResult(client, runId, processor);
           } catch (error) {
             const errorMsg =
               error instanceof Error ? error.message : String(error);

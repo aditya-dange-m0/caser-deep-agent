@@ -16,4 +16,4 @@ export * from './errors';
 export * from './parallel-task.service';
 export * from './stream-event-emitter';
 export * from './file-logger.service';
-
+export * from './timeout-config.service';

@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { config } from 'dotenv';
+import { getTimeoutConfig } from '../common/timeout-config.service';
 
 config();
 
@@ -60,12 +61,17 @@ const makeRequest = async (
 // Helper function to poll for FindAll run status
 const pollFindAllStatus = async (
   findallId: string,
-  maxAttempts: number = 900, // 15 minutes max (900 * 1 second)
-  interval: number = 1000, // 1 second
+  maxAttempts?: number,
+  interval?: number,
 ): Promise<any> => {
+  const timeoutConfig = getTimeoutConfig();
+  const config = timeoutConfig.getFindAllPollingConfig();
+
+  const finalMaxAttempts = maxAttempts ?? config.maxAttempts;
+  const finalInterval = interval ?? config.intervalMs;
   let lastStatus: any = null;
 
-  for (let i = 0; i < maxAttempts; i++) {
+  for (let i = 0; i < finalMaxAttempts; i++) {
     try {
       const status = await makeRequest(`/runs/${findallId}`);
       lastStatus = status;
@@ -77,14 +83,16 @@ const pollFindAllStatus = async (
         status.status?.is_active === false;
 
       if (isCompleted) {
-        console.log(`FindAll run completed on attempt ${i + 1}/${maxAttempts}`);
+        console.log(
+          `FindAll run completed on attempt ${i + 1}/${finalMaxAttempts}`,
+        );
         return status;
       }
 
       // Log progress every 10 attempts
       if (i === 0 || (i % 10 === 0 && i > 0)) {
         console.log(
-          `Polling attempt ${i + 1}/${maxAttempts} for FindAll ID: ${findallId}`,
+          `Polling attempt ${i + 1}/${finalMaxAttempts} for FindAll ID: ${findallId}`,
         );
         console.log(`Status: ${status.status?.status || 'unknown'}`);
         console.log(`Is Active: ${status.status?.is_active ?? 'unknown'}`);
@@ -94,8 +102,8 @@ const pollFindAllStatus = async (
       }
 
       // Wait before next attempt
-      if (i < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, interval));
+      if (i < finalMaxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, finalInterval));
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -103,7 +111,7 @@ const pollFindAllStatus = async (
 
       // If it's the last attempt, return the last known status instead of throwing
       // This allows us to still try fetching results
-      if (i === maxAttempts - 1) {
+      if (i === finalMaxAttempts - 1) {
         console.warn(
           `Polling timeout reached, but will attempt to fetch results anyway. Last status:`,
           lastStatus?.status?.status || 'unknown',
@@ -112,14 +120,14 @@ const pollFindAllStatus = async (
       }
 
       // Wait before retrying
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      await new Promise((resolve) => setTimeout(resolve, finalInterval));
     }
   }
 
   // If we get here, we've exhausted all attempts
   // Return the last status so caller can still try to fetch results
   console.warn(
-    `FindAll run polling timeout: Maximum attempts (${maxAttempts}) exceeded for FindAll ID: ${findallId}. Will attempt to fetch results anyway.`,
+    `FindAll run polling timeout: Maximum attempts (${finalMaxAttempts}) exceeded for FindAll ID: ${findallId}. Will attempt to fetch results anyway.`,
   );
   return lastStatus;
 };
@@ -435,9 +443,8 @@ export const findAllResultsTool = createTool({
     max_wait_seconds: z
       .number()
       .optional()
-      .default(900)
       .describe(
-        'Maximum time to wait for completion in seconds (default: 900 = 15 minutes)',
+        'Maximum time to wait for completion in seconds (default: from config)',
       ),
   }),
   // Output can be a string (error) or object (success) to reduce context pollution
@@ -456,10 +463,13 @@ export const findAllResultsTool = createTool({
     try {
       console.log('findAllResults: Starting execution');
 
+      const timeoutConfig = getTimeoutConfig();
+      const waitConfig = timeoutConfig.getFindAllWaitConfig();
+
       const {
         findall_id,
         wait_for_completion = true,
-        max_wait_seconds = 300,
+        max_wait_seconds = waitConfig.defaultWaitSeconds,
       } = context;
 
       if (
@@ -477,9 +487,10 @@ export const findAllResultsTool = createTool({
         console.log(
           `findAllResults: Waiting for completion (max ${max_wait_seconds}s)`,
         );
-        const maxAttempts = Math.floor(max_wait_seconds);
+        const maxAttempts =
+          timeoutConfig.calculateFindAllMaxAttempts(max_wait_seconds);
         try {
-          await pollFindAllStatus(findall_id, maxAttempts, 1000);
+          await pollFindAllStatus(findall_id, maxAttempts);
         } catch (pollError) {
           // Even if polling times out, try to fetch results anyway
           // The results endpoint may return partial results
@@ -553,9 +564,8 @@ export const findAllCompleteTool = createTool({
     max_wait_seconds: z
       .number()
       .optional()
-      .default(900)
       .describe(
-        'Maximum time to wait for completion in seconds (default: 900 = 15 minutes)',
+        'Maximum time to wait for completion in seconds (default: from config)',
       ),
   }),
   // Output can be a string (error) or object (success) to reduce context pollution
@@ -574,12 +584,15 @@ export const findAllCompleteTool = createTool({
     try {
       console.log('findAllComplete: Starting complete workflow');
 
+      const timeoutConfig = getTimeoutConfig();
+      const waitConfig = timeoutConfig.getFindAllWaitConfig();
+
       const {
         objective,
         generator = 'core',
         match_limit = 10,
         enrichments,
-        max_wait_seconds = 300,
+        max_wait_seconds = waitConfig.defaultWaitSeconds,
       } = context;
 
       if (
@@ -650,9 +663,10 @@ export const findAllCompleteTool = createTool({
       });
 
       // Step 3: Wait for completion
-      const maxAttempts = Math.floor(max_wait_seconds);
+      const maxAttempts =
+        timeoutConfig.calculateFindAllMaxAttempts(max_wait_seconds);
       try {
-        await pollFindAllStatus(findallId, maxAttempts, 1000);
+        await pollFindAllStatus(findallId, maxAttempts);
       } catch (pollError) {
         // Even if polling times out, try to fetch results anyway
         // The results endpoint may return partial results

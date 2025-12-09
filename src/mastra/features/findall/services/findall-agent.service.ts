@@ -7,6 +7,7 @@ import {
   findAllCompleteTool,
 } from '../../../tools/findall-tools';
 import { BaseResearchAgentService } from '../../../shared/services/base-research-agent.service';
+import { TimeoutConfigService } from '../../../common/timeout-config.service';
 
 export enum GeneratorType {
   BASE = 'base',
@@ -16,6 +17,9 @@ export enum GeneratorType {
 
 @Injectable()
 export class FindAllAgentService extends BaseResearchAgentService {
+  constructor(private readonly timeoutConfig: TimeoutConfigService) {
+    super();
+  }
   async ingest(objective: string): Promise<any> {
     const runtimeContext = this.createRuntimeContext();
 
@@ -102,7 +106,9 @@ export class FindAllAgentService extends BaseResearchAgentService {
         findall_id: findallId,
         wait_for_completion:
           waitForCompletion !== undefined ? waitForCompletion : true,
-        max_wait_seconds: maxWaitSeconds || 900,
+        max_wait_seconds:
+          maxWaitSeconds ||
+          this.timeoutConfig.getFindAllWaitConfig().maxWaitSeconds,
       },
       {
         mastra: this.getMastra(),
@@ -130,7 +136,9 @@ export class FindAllAgentService extends BaseResearchAgentService {
         generator: generator || 'core',
         match_limit: matchLimit || 10,
         enrichments: enrichments || [],
-        max_wait_seconds: maxWaitSeconds || 900,
+        max_wait_seconds:
+          maxWaitSeconds ||
+          this.timeoutConfig.getFindAllWaitConfig().maxWaitSeconds,
       },
       {
         mastra: this.getMastra(),
