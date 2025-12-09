@@ -4,6 +4,7 @@
 import { Logger } from '@nestjs/common';
 import { MessageEvent } from '@nestjs/common';
 import type { StreamingObserver, TaskStreamConfig } from './types';
+import { sanitizeErrorMessage } from './errors';
 
 export class StreamEventEmitter {
   constructor(
@@ -70,14 +71,17 @@ export class StreamEventEmitter {
   }
 
   /**
-   * Emit an error event
+   * Emit an error event (sanitized for client safety)
    */
   emitError(error: string | Error): void {
-    const errorMessage = error instanceof Error ? error.message : error;
+    // Sanitize error message to prevent leaking sensitive information
+    const sanitizedMessage = sanitizeErrorMessage(error);
     this.emitEvent('error', {
-      error: errorMessage,
+      error: sanitizedMessage,
     });
-    this.logger.debug(`[${this.serviceName}] Error event emitted: ${errorMessage}`);
+    this.logger.debug(
+      `[${this.serviceName}] Error event emitted: ${sanitizedMessage}`,
+    );
   }
 
   /**
@@ -91,13 +95,15 @@ export class StreamEventEmitter {
   }
 
   /**
-   * Error the stream
+   * Error the stream (with sanitized error)
    */
   error(error: Error): void {
     if (this.observer) {
-      this.observer.error(error);
+      // Create a safe error without sensitive information
+      const safeError = new Error(sanitizeErrorMessage(error));
+      safeError.name = error.name; // Keep error type for debugging
+      this.observer.error(safeError);
       this.logger.error(`[${this.serviceName}] Stream errored:`, error);
     }
   }
 }
-

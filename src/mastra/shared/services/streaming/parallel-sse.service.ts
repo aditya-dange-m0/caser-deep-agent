@@ -5,6 +5,11 @@ import {
   TimeoutConfigService,
   getTimeoutConfig,
 } from '../../../common/timeout-config.service';
+import {
+  createSafeError,
+  sanitizeErrorForLogging,
+  sanitizeErrorMessage,
+} from '../../../common/errors';
 
 config();
 
@@ -143,9 +148,14 @@ export class ParallelSseService {
           );
 
           if (!response.ok) {
-            throw new Error(
-              `HTTP error! status: ${response.status} ${response.statusText}`,
+            // Don't expose internal API URLs or detailed error info
+            const safeError = createSafeError(
+              new Error(
+                `HTTP ${response.status}: ${response.statusText || 'Request failed'}`,
+              ),
+              'Failed to connect to streaming service. Please try again later.',
             );
+            throw safeError;
           }
 
           if (!response.body) {
@@ -410,10 +420,7 @@ export class ParallelSseService {
                         lastEventId,
                         reconnectAttempt: nextAttempt,
                         lastKnownStatus,
-                        error:
-                          readError instanceof Error
-                            ? readError.message
-                            : 'Reader read error',
+                        error: sanitizeErrorMessage(readError),
                       },
                     });
 
@@ -683,10 +690,7 @@ export class ParallelSseService {
                       lastEventId,
                       reconnectAttempt: nextAttempt,
                       lastKnownStatus,
-                      error:
-                        error instanceof Error
-                          ? error.message
-                          : 'Unknown error',
+                      error: sanitizeErrorMessage(error),
                     },
                   });
 
@@ -701,16 +705,14 @@ export class ParallelSseService {
                     `[SSE] Stream processing error for run_id ${runId}:`,
                     error,
                   );
-                  // Log stream processing error to file
+                  // Log stream processing error to file (with sanitization)
                   if (this.fileLogger) {
+                    const sanitizedError = sanitizeErrorForLogging(error);
                     this.fileLogger
                       .logError(runId, {
-                        message:
-                          error instanceof Error
-                            ? error.message
-                            : 'Unknown error',
+                        message: sanitizedError.message,
                         type: 'stream_processing_error',
-                        stack: error instanceof Error ? error.stack : undefined,
+                        stack: sanitizedError.stack,
                         eventCount,
                         lastEventId,
                         reconnectAttempts: currentReconnectAttempt,
@@ -726,7 +728,12 @@ export class ParallelSseService {
                     clearTimeout(streamTimeoutId);
                     streamTimeoutId = null;
                   }
-                  reject(error);
+                  // Sanitize error before rejecting to prevent leaking sensitive info
+                  const safeError = createSafeError(
+                    error,
+                    'Stream processing failed. Please try again later.',
+                  );
+                  reject(safeError);
                 }
               }
             }
@@ -824,16 +831,14 @@ export class ParallelSseService {
           if (!hasCompleted) {
             hasCompleted = true;
             this.logger.error(`[SSE] Fetch error for run_id ${runId}:`, error);
-            // Log fetch error to file
+            // Log fetch error to file (with sanitization)
             if (this.fileLogger) {
+              const sanitizedError = sanitizeErrorForLogging(error);
               this.fileLogger
                 .logError(runId, {
-                  message:
-                    error instanceof Error
-                      ? error.message
-                      : 'Unknown fetch error',
+                  message: sanitizedError.message,
                   type: 'fetch_error',
-                  stack: error instanceof Error ? error.stack : undefined,
+                  stack: sanitizedError.stack,
                 })
                 .catch((err: Error) => {
                   this.logger.warn(`[SSE] Failed to log error to file:`, err);
@@ -843,7 +848,12 @@ export class ParallelSseService {
               clearTimeout(streamTimeoutId);
               streamTimeoutId = null;
             }
-            reject(error);
+            // Sanitize error before rejecting to prevent leaking sensitive info
+            const safeError = createSafeError(
+              error,
+              'Failed to establish connection. Please try again later.',
+            );
+            reject(safeError);
           }
         }
       };

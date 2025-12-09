@@ -9,7 +9,11 @@ import { ParallelTaskService } from '../../../common/parallel-task.service';
 import { ParallelSseService } from './parallel-sse.service';
 import { StreamEventEmitter } from '../../../common/stream-event-emitter';
 import { StreamingError } from '../../../common/errors';
-import type { StreamingObserver, TaskStreamConfig } from '../../../common/types';
+import { createSafeError } from '../../../common/errors';
+import type {
+  StreamingObserver,
+  TaskStreamConfig,
+} from '../../../common/types';
 
 @Injectable()
 export abstract class BaseTaskStreamingService {
@@ -32,8 +36,7 @@ export abstract class BaseTaskStreamingService {
    * @returns Observable that emits MessageEvent objects
    */
   streamObservable(config: TaskStreamConfig): Observable<MessageEvent> {
-    const queryPreview =
-      config.query?.substring(0, 100) || 'N/A';
+    const queryPreview = config.query?.substring(0, 100) || 'N/A';
     this.logger.log(
       `[Streaming] Starting ${this.serviceName} stream - Query: "${queryPreview}${config.query && config.query.length > 100 ? '...' : ''}", Processor: ${config.processor || 'default'}`,
     );
@@ -41,7 +44,12 @@ export abstract class BaseTaskStreamingService {
     return new Observable((observer) => {
       this.streamTask(config, observer).catch((error) => {
         this.logger.error(`[Streaming] Error in streamObservable:`, error);
-        observer.error(error);
+        // Sanitize error before sending to client
+        const safeError = createSafeError(
+          error,
+          'Streaming failed. Please try again later.',
+        );
+        observer.error(safeError);
       });
     });
   }
@@ -109,12 +117,15 @@ export abstract class BaseTaskStreamingService {
       // Note: Errors are logged to file by ParallelTaskService or ParallelSseService
       // We don't need to log here since those services handle file logging
 
+      // Sanitize error message before emitting to client
       eventEmitter.emitError(errorMessage);
-      eventEmitter.error(
-        error instanceof Error
-          ? error
-          : new StreamingError(errorMessage, error instanceof Error ? error : undefined),
+
+      // Create safe error for observer (sanitized)
+      const safeError = createSafeError(
+        error,
+        'Streaming failed. Please try again later.',
       );
+      eventEmitter.error(safeError);
     }
   }
 
@@ -136,15 +147,15 @@ export abstract class BaseTaskStreamingService {
 
     let eventCount = 0;
 
-      await this.sseService.streamParallelEvents(runId, (event) => {
-        eventCount++;
-        this.handleEvent(event, eventCount);
+    await this.sseService.streamParallelEvents(runId, (event) => {
+      eventCount++;
+      this.handleEvent(event, eventCount);
 
-        // Emit event to observer if available
-        if (eventEmitter.hasObserver()) {
-          eventEmitter.emitEvent(event.type, event.data);
-        }
-      });
+      // Emit event to observer if available
+      if (eventEmitter.hasObserver()) {
+        eventEmitter.emitEvent(event.type, event.data);
+      }
+    });
 
     this.logger.log(
       `[Streaming] All events streamed successfully - run_id: ${runId} (total events: ${eventCount})`,
@@ -163,7 +174,8 @@ export abstract class BaseTaskStreamingService {
   ): void {
     // Log significant events
     if (event.type === 'task_run.state') {
-      const status = (event.data as { run?: { status?: string } })?.run?.status || 'unknown';
+      const status =
+        (event.data as { run?: { status?: string } })?.run?.status || 'unknown';
       this.logger.debug(
         `[Streaming] Forwarding state event (event #${eventCount}): ${status}`,
       );
@@ -206,4 +218,3 @@ export abstract class BaseTaskStreamingService {
    */
   protected abstract getCompletionMessage(): string;
 }
-
